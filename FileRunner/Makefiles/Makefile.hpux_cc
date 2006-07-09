@@ -1,0 +1,18 @@
+
+# This makefile is for the cc ANSI compiler on HP-UX
+
+# Change this if you have this stuff somewhere else.
+TCLINC = /usr/local/lib/tcl8.0
+TKINC  = /usr/local/lib/tk8.0
+X11INC = /usr/X11/include
+
+CFLAGS = -Ae -c +z -O -I$(TCLINC) -I$(TKINC) -I$(X11INC)
+
+CC = cc
+
+all: ext.so
+
+ext.so: ext.c
+	$(CC) $(CFLAGS) ext.c
+	ld -b ext.o -o ext.so
+

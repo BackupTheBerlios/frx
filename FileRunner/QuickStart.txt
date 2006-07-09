@@ -1,0 +1,35 @@
+$Id: QuickStart.txt,v 1.1 2006/07/09 10:10:13 butz Exp $
+
+LMB = left mouse button
+MMB = middle mouse button
+RMB = right mouse button
+
+- Select files with LMB and/or MMB. You'll figure out what the
+  difference is. (You can also use LMB+Ctrl to do the same as MMB).
+
+- When you have selected something, you can press one of the middle
+  command buttons (in the window) with the LMB to do stuff. 
+  If you press the command buttons with the RMB, the command will 
+  execute in the background.
+
+- View things with RMB or double-click LMB.
+
+- Enter directories the way you view things (see above). Try pressing the 
+  Ctrl-LMB when you enter directories.
+
+- Type an FTP URL in the directory entry to browse an FTP site.
+
+- Try "Configuration->Edit Configuration" to edit lots of
+  configuration options.
+
+- After adding stuff to the hotlist, do "Configuration->Save
+  Configuration" to save the hotlist for later.
+
+Mouse operation summary:
+
+LMB         - select/unselect (clears selection first)
+MMB         - select/unselect (does not clear selection first)
+Ctrl-LMB    - select/unselect (does not clear selection first)
+RMB         - view things/cd to directory
+Double-LMB  - view things/cd to directory
+Ctrl-RMB    - View directories in opposite panel

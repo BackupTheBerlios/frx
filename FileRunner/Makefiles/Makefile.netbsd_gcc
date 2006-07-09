@@ -1,0 +1,14 @@
+# Change this if you have this stuff somewhere else.
+TCLINC = /usr/local/lib/tcl8.0
+TKINC  = /usr/local/lib/tk8.0
+X11INC = /usr/X11/include
+
+CFLAGS = -D__FreeBSD__ -Wall -fPIC -O3 -I$(TCLINC) -I$(TKINC) -I$(X11INC)
+
+CC = gcc
+
+all: ext.so
+
+ext.so: ext.o
+	ld -Bshareable -o ext.so ext.o
+

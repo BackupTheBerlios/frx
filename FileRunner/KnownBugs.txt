@@ -1,0 +1,188 @@
+$Id: KnownBugs.txt,v 1.1 2006/07/09 10:10:13 butz Exp $
+
+KNOWN BUGS AND PROBLEMS
+=======================
+
+********************************************************************
+Bugs/problems I intend to fix:
+********************************************************************
+
+--------------------------------------------------------------------
+Setting "show all files" and doing an FTP copy recursively doesn't 
+work too well. (It tries to create directories named . and ..)
+
+--------------------------------------------------------------------
+Having file names with spaces in them or other unusual characters
+(for a file name) when fetching from FTP in background mode usually
+doesn't work. A workaround is to download synchronously (in the 
+foreground).
+
+********************************************************************
+Bugs I don't intend to fix:
+********************************************************************
+
+--------------------------------------------------------------------
+FileRunner cannot handle files or directories that start with a
+~-character. This looks like a bug in Tcl actually. Tcl parses a file
+called "~foo" as the home directory of user "foo", which is not
+correct if you really mean the file "~foo"...
+
+--------------------------------------------------------------------
+Files with spaces in the filename will sort incorrectly.
+
+--------------------------------------------------------------------
+If your timezone is set to GMT+xx then you might get incorrect dates
+when you view FTP listings. This is because the Tcl/Tk clock scan
+function cannot deal with GMT+xx elements in the date string. Don't
+know why. You should use another timezone notation instead, like PST
+or MET etc.
+
+--------------------------------------------------------------------
+Marking an entry in the hotlist and pressing the middle mouse button
+will yield an error.
+
+--------------------------------------------------------------------
+Don't press Alt+Esc to exit a text window
+
+
+********************************************************************
+The following list shows crash dumps caused by bugs in Tcl/Tk. 
+There's not much I can do about them, other than acknowledge their
+existence and hope the next version of Tcl/Tk won't have them.
+********************************************************************
+
+--------------------------------------------------------------------
+Tcl crash:
+
+grab failed: window not viewable
+    while executing
+"grab -global $menu"
+    invoked from within
+"if {$tkPriv(postedMb) != ""} {
+        grab -global $tkPriv(postedMb)
+    } else {
+        while {[wm overrideredirect $menu]
+                && ([winfo class [winfo parent $menu ..."
+    (procedure "tkMenuButtonDown" line 4)
+    invoked from within
+"tkMenuButtonDown .toplevel_1.text.p"
+    (command bound to event)
+
+--------------------------------------------------------------------
+Tcl crash:
+
+bad window path name ".editq"
+    while executing
+"destroy $w"
+    (procedure "tk_dialog" line 97)
+    invoked from within
+"tk_dialog .editq {What to do?} {Do you want to save before exiting?} {} 0 Yes No Cancel"
+    invoked from within
+"set r [tk_dialog .editq {What to do?} {Do you want to save before exiting?} {} 0 Yes No
+Cancel]..."
+    (procedure "EditTextCheckPoint" line 2)
+    invoked from within
+"EditTextCheckPoint {/home/euler/acs/fontenel/.fr} .toplevel_1 "ReadConfig; ForceUpdate""
+    (command for "WM_DELETE_WINDOW" window manager protocol)
+
+--------------------------------------------------------------------
+Tcl crash:
+
+can't read "tkPriv(oldGrab)": no such element in array
+    while executing
+"if {$tkPriv(oldGrab) != ""} {
+        if {$tkPriv(grabStatus) == "global"} {
+            grab set -global $tkPriv(oldGrab)
+        } else {
+            grab set $tkPriv(oldGrab)
+ ..."
+    (procedure "tkMenuUnpost" line 57)
+    invoked from within
+"tkMenuUnpost {}"
+    invoked from within
+"if  {($tkPriv(postedMb) == $w) && ($tkPriv(inMenubutton) == $w)} {
+        tkMenuFirstEntry [$tkPriv(postedMb) cget -menu]
+    } else {
+        tkMenuUnpost {}
+     ..."
+    (procedure "tkMbButtonUp" line 4)
+    invoked from within
+"tkMbButtonUp .fleft.dirmenu_frame.hotlist_but"
+    (command bound to event)
+
+--------------------------------------------------------------------
+Tcl crash:
+
+grab failed: another application has grab
+    while executing
+"grab $w"
+    (procedure "tk_dialog_fr" line 71)
+    invoked from within
+"tk_dialog_fr .apop "**Error**" "$error" "" 0 "OK""
+
+
+--------------------------------------------------------------------
+Tcl crash:
+
+bad listbox index "": must be active, anchor, end, @x,y, or a number
+    while executing
+"$w selection clear $i $el"
+    ("extended" arm line 7)
+    invoked from within
+"switch [$w cget -selectmode] {
+        browse {
+            $w selection clear 0 end
+            $w selection set $el
+            set tkPriv(listboxPrev) $el
+        }
+        extended {
+            ..."
+    (procedure "tkListboxMotion" line 7)
+    invoked from within
+"tkListboxMotion .fupper.fleft.frame_listb.listbox1 [.fupper.fleft.frame_listb.listbox1 index 
+@152,204]"
+    (command bound to event)
+
+--------------------------------------------------------------------
+Tcl crash:
+
+grab failed: window not viewable
+    while executing
+"grab -global $menu"
+    (procedure "tkMenuButtonDown" line 33)
+    invoked from within
+"tkMenuButtonDown .fupper.ftop.menu_frame.settings_but.m"
+    (command bound to event)
+
+
+--------------------------------------------------------------------
+Tcl crash:
+
+grab failed: window not viewable
+    while executing
+"grab -global $w"
+    (procedure "tkMbPost" line 107)
+    invoked from within
+"tkMbPost $tkPriv(inMenubutton) 155 116"
+    (command bound to event)
+
+--------------------------------------------------------------------
+Tcl crash:
+
+invalid command name "tcl_wordBreakBefore"
+    while executing
+"tcl_wordBreakBefore [$w get] $anchor"
+    ("word" arm line 6)
+    invoked from within
+"switch $tkPriv(selectMode) {
+        char {
+            if $tkPriv(mouseMoved) {
+                if {$cur < $anchor} {
+                    $w selection range $cur $anchor
+                } elseif {$cur > $a..."
+    (procedure "tkEntryMouseSelect" line 9)
+    invoked from within
+"tkEntryMouseSelect .fupper.fright.entry_dir 174"
+    (command bound to event)
+
+

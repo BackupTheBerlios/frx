@@ -1,0 +1,16 @@
+
+# Change this if you have this stuff somewhere else.
+TCLINC = /Library/Frameworks/Tcl.framework/Versions/8.4/Headers
+TKINC  = /Library/Frameworks/Tk.framework/Versions/8.4/Headers
+X11INC = /usr/X11R6/include/X11
+TCLLIB = /Library/Frameworks/Tcl.framework
+TKLIB  = /Library/Frameworks/Tk.framework
+
+CFLAGS = -Wall -fPIC -O3 -I$(TCLINC) -I$(TKINC) -I$(X11INC)
+
+CC = gcc
+
+all: ext.dylib
+
+ext.dylib: ext.o
+	$(CC) -dynamiclib -L$(TCLLIB) -ltclstub8.4 -o ext.dylib ext.o /Library/Frameworks/Tcl.framework/Tcl

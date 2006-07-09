@@ -1,0 +1,668 @@
+$Id: HISTORY,v 1.1 2006/07/09 10:10:12 butz Exp $
+
+Version history for FileRunner.
+
+--------------------------------------------------------------------------------
+3.0b1 - 2006-06-09
+
+  - Deleted command line argument "-iconified" and fixed handling of
+    directory c.l. args (thus fixed the "Clone" function).
+
+  - Instead of an 'xterm', the command window button now opens a console;
+    this is convenient to inspect the running FileRunner, too.
+
+  _ Tweaked the user interface (with Mac OS X look and feel in mind).
+
+  - The file listings are now in color; colors depending on file
+    permissions.
+
+  - Moved the status bar to the bottom (like is best practice).
+
+  - Added 2 key bindings: Cmd-q for exit, Cmd-n for "Clone".
+
+  - Built 'ext.c' for Mac OS X ('ext.dylib').
+
+  - Got rid of "cross" botton in "QEdit" and "View" windows.
+
+  - Fixed file sorting "on name" in "proc GetDirList".
+
+  - The entries containing the paths show are right aligned now.
+
+  - Added a main menu and deleted menu buttons accordingly.
+
+  - Introduced button bar (with button groups).
+
+  - Threw out "Show commands up/down" and "Toggle select" buttons.
+
+  - Added "Edit" menu
+
+  - More sophisticated platform check: "MacOSX", "Unix" or "Windows".
+
+--------------------------------------------------------------------------------
+2.5.1 - 1999-12-30
+
+  Fixes
+
+  - Y2K bug fixed! :-) Year 2000 would show up as 100 instead of 00...
+
+  - When you click in a text window and then pressed pageup/pagedown
+    you would scroll two pages. Fixed.
+
+  - Dialogs are now placed in the middle of the FileRunner window
+    instead of in the middle of the screen (which was very annoying
+    when running a Xinerama setup and the dialogs would pop up smack
+    in the middle between the two displays...)
+
+  - Executes 'wish' instead of 'wish8.0'
+
+  - Sorry, did not have the opportunity to create Solaris binaries in
+    this release. Will fix that in a week or so.
+
+  I hope to make a more full featured release soon with some other
+  stuff I want to get fixed/added but at least this release will get
+  rid of that stupid Y2K bug (hopefully)...
+
+--------------------------------------------------------------------------------
+2.5 - 1998-06-02
+
+  News
+
+  - Created new configuration browser, to ease browsing and editing
+    the rather long list of options. Invoked with Configuration->Edit
+    Configuration.
+
+  - Automatically saves configuration (incl. hotlist) on
+    exit. Configurable through config(save_conf_at_exit) in the
+    configuration browser.
+
+  - Mouse buttons used for wheel on wheelie-mice are now configurable
+    through config(mwheel,neg) and config(mwheel,pos) in the
+    configuration browser. These default to 4 and 5, respectively and
+    corresponds nicely with the following kind of "Pointer" section in
+    an Xfree 3.3.2 (or later) XF86Config file:
+
+      Section "Pointer"
+        Protocol        "Auto"
+        Device          "/dev/mouse"
+        # Choose button events for wheel up/down actions
+        ZAxisMapping 4 5
+        BaudRate        1200
+        Resolution      100
+      EndSection
+
+  - FileRunner will now create relative links (as default) instead of
+    absolute links when using the S-Link and S-LnAs
+    buttons. Configurable via the config(create_relative_links)
+    option. (A relative link is one that points to something of the
+    form "../../foo". An absolute link looks like "/a/b/c/foo").
+    Thanks to Norbert Erkeland for this code.
+
+  - FileRunner now has the option of whether or not to run "pwd" after
+    cd'ing to a new directory to check where it ended up. This is
+    controlled by the variable config(cd_pwd) which is per default on
+    (which mimics the behaviour of older FileRunner releases). If you
+    set it to off, FileRunner will infer the new path from the old
+    path. This makes a difference if you cd to a link that points to a
+    directory. There is a similar config option config(ftp,cd_pwd) for
+    the FTP case.
+
+  - You can now colorize the middle command buttons in a supported
+    way. Look at the config(middle_button_colors) in the configuration
+    browser.
+
+  - Added FTP resume background (async) download. See Utilities menu.
+
+  - Added ForEach button that runs a command for each selected file.
+    This command is very close to "Utilities->Run Command On Selected..."
+    but instead of running one command on many files it runs one command
+    per file.
+
+  - Added "Etc->Recurse Command...". This runs a command recursively
+    in the current directory and downwards using the Unix find utility.
+
+
+  Fixes
+
+  - ~/.fr/tmp is now used for temporary FTP files (primarily used when
+    you "view" a file in an FTP directory). Using /tmp/USER_fr_tmp was
+    a security risk, since anyone could create /tmp/USER_fr_tmp and
+    put soft links in here that would get wiped when the user viewed a
+    file by that name.
+
+  - FileRunner no longer does a CD to the root directory when logging
+    in to a remote FTP site.
+
+  - Last downloaded filename through HTTP is saved for next download.
+
+
+  Changes
+
+  - FileRunner is now explicitly a part of the Open Source movement,
+    as shown when choosing "File->About...".
+
+  - "Settings" is now called "Configuration" consistently within 
+    FileRunner. I've done a search/replace in the User Guide but
+    I'm sure it's not perfect...
+
+--------------------------------------------------------------------------------
+2.4.2 - 1998-02-15
+
+  Fixes
+  - Bug: "Error in startup script: can't read "glob(gui,color_cursor)": no such
+    element in array"
+  - Wrong date displayed in FTP listings sometimes.
+
+--------------------------------------------------------------------------------
+2.4.1 - 1998-01-04
+
+  News
+  - FileRunner is now distributed under the GNU General Public License.
+    Let's hope it turns up in even more places. Redhat, are you listening? :-)
+    (Btw: No one ever bothered to pay $20 for a commercial license, but I have 
+    received a bunch of cool postcards. Keep 'em coming :-)
+  - Support for "wheel"-mice. Scroll lists and text using the mouse wheel. 
+    Thanks to Colas Nahaboo for this. Config parameter: config(mwheel,delta)
+    determines how many lines to scroll for each wheel click. Shift-wheel
+    scrolls one line.
+  - You can now change the color of the cursor.
+
+  Fixes
+  - Fixed "checkowner" function when copying/deleting files.
+  - Can now parse FTP site reactor.actlab.com (yucky WinNT host :-).
+    Doesn't read dates from this site correctly, but who cares...
+  - Various minor stuff.
+
+--------------------------------------------------------------------------------
+2.4 - 1997-09-07
+
+  News
+  - Supports Tcl/Tk 8.0 only. Get it! :-)
+  - Added Batch FTP download. This is useful when you want to select a
+    number of files for downloading when the files are not in the same
+    directory or even on the same site. You can now browse any FTP site,
+    add the selected files to the batch list, then later start the batch
+    download and go do something else while the files download. See the 
+    Etc menu.
+  - HTTP downloading. This was just too easy to implement for me to be 
+    able to resist :-) Just choose "Etc->HTTP Download" and enter an 
+    URL to download. You don't have to bother with adding "http://"
+    if you don't want to. Then choose a filename to save the download to. 
+    You can also enter an HTTP proxy in the config(http,proxy) parameter.
+    (Do a "Settings->Save Settings..." followed by a "Settings->Edit 
+    Settings..." to see this parameter)
+  - Added Help->Tips menu. This contains a few tips on usage, like how to 
+    color your command buttons if you want to.
+  - Foreground color for selection is now configurable.
+  - User-configurable button commands now get an extra argument: The mouse
+    button that was used to press the button. This means you can let your
+    buttons do different things if pressed with different mouse buttons.
+    Unfortunately this also means you need to add a new argument to the
+    command. (Values: 1:Left 2:Right 3:Middle) See chapter 7 in the User's 
+    Guide.
+  - Added the following entry to the config(view,extensions) parameter:
+      { {rpm -qilp {%s}}
+        {*.rpm}
+        -viewtext }
+    This lets you view .rpm files. You'll have to put this in yourself 
+    if you already have a config file.
+
+  Fixes
+  - FileRunner now handles file names with any characters allowed by the 
+    file system. EXCEPTION: When copying directories the directory names 
+    (source and destination) must not contain tick-marks "'" since this 
+    is used as an escape character. I doubt this will be a problem in 
+    the real world, though.
+    FileRunner used to have a real problem with file names containing ", }, 
+    ], $ etc. You don't want to know what a headache Tcl gave me with its 
+    evaluation rules... AARGH!
+  - "Show All Files" now also correctly shows file beginning with a dot . in the
+    hyper-menu.
+  - Miscellaneous fixes.
+
+  Changes
+  - Because of the new improved file name handling I've had to change the
+    config(cmd,arc) command. This is now gone and replaced with
+    config(cmd,archive). (The change was made only so I could enforce 
+    a new default value for this variable, which I cannot if people already 
+    have this variable in their .fr/config file.) The format for this command
+    is now simply "archive-command {%s}" where {%s} will be substituted with
+    the directory name at runtime. Do a Save Settings followed by Edit Settings
+    and see the config file for more info on this.
+  - The system wide config file is now called "config" and should be placed
+    directly under the FileRunner installation directory.
+
+  Stupid stunts
+  - There are bits and pieces here and there in the code referring to WIN32...
+    Well, I started to port FileRunner to Windows but I just got rather fed up 
+    with it after having received a prolonged exposure to Windows programming...
+    It shouldn't be too hard to finish, though.
+
+--------------------------------------------------------------------------------
+2.3 - 1997-03-30
+
+  New stuff
+  - FileRunner will now cache reads from FTP directories. (If you go to a 
+    previously visited FTP directory, it will fetch it from the cache.) The 
+    cache (all of it) will be invalidated when you press the refresh button (the 
+    one with two arrows chasing each other). The number of directories 
+    cached is configurable via the config(ftp,cache,maxentries) parameter. 
+    I have a feeling this feature will come back and bite me... Tell me if 
+    you see something fishy. :-)
+  - Shows estimated time of arrival in both relative and absolute time.
+    (I discovered relative time estimate wasn't very useful when it showed
+    something like 1200 minutes...:-). Estimate is now calculated over the
+    average transfer speed during the last two minutes.
+  - New command line argument "-iconified" will start FileRunner in iconified
+    mode.
+  - Config files are now saved under ~/.fr/ (which is now a directory). The 
+    .fr file is called .fr/config, the .fr_cmds file is called .fr/cmds and
+    so on.
+
+  Fixes
+  - Couldn't handle files with the characters " { } in the file name. This
+    fix unfortunately will have the effect of incorrectly sorting files with
+    spaces in them last in the list.
+  - If you run FR as root, having done "su" in a user shell, FilerRunner now 
+    shows the correct "user@machine" in the top status line.
+  - Doesn't barf anymore if it detects a socket or a pipe in an FTP listing.
+  - I got a question on how to use the "-remote openFile()" argument to netscape
+    if you wanted to have a default rule for viewing .html files. The answer was
+    trickier than I though because of tclsh's hairy quotation and evaluation 
+    rules. Anyway, here is how you do it: First, add the following to your
+    config(view,extensions) variable:
+
+      { {viewhtml {%s}}
+        {*.html} }
+
+    Then create a script called viewhtml that looks like this:
+
+    #!/bin/csh -f
+    netscape -remote openFile\("$argv"\)
+
+    That should do it. The problem was that tclsh won't do the normal evaluation
+    on lists inside ( ). That's why you have to do this work-around with the 
+    external script.
+  - Should now correctly work with Windows based ftp deamons. Thanks to 
+    Colas Nahaboo for this fix.
+  - Misc bugs fixed.
+
+
+--------------------------------------------------------------------------------
+2.2.1 - 1997-01-18
+
+  Fixes
+  - The "Find file" function now behaves better. It was stupid sometimes.
+  - Now handles trouble converting FTP dates gracefully. If you have the
+    timezone set to GMT+xx on your computer, there seems to be a bug in
+    "clock scan" that prevents it from converting date strings with GMT+xx 
+    in them. The result is that dates might be wrong. Work-around: Use
+    another way of denoting the time zone, like MET or PST or whatever.
+  - Select-all button didn't update the status line with selected/total...
+  - A couple of other small bugs fixed.
+
+
+--------------------------------------------------------------------------------
+2.2 - 1997-01-14
+
+  Features
+  - "Find file" function added both for unix files and ftp sites. (Uses the
+    "site exec locate" command to search FTP sites).
+  - Added chmod button and GUI requester. Should be fairly intuitive.
+  - Copy with resume for FTP added. Let's you continue an FTP transfer that
+    was aborted. Great when Netscape drops an FTP download for no reason...
+  - History is now saved to disk between invocations of FileRunner.
+  - Shell commands are now always executed in the background. A small
+    "R" to the right of the command line will turn red when one or more
+    commands are executing. More than one command can be executed 
+    simultaneously, output will be intermixed in the output window.
+
+  Changes
+  - FTP transfer speed measurement is now more correct.
+  - New chapter on which files FileRunner uses added to the online guide. (10.2)
+  - Minor smaller things mainly affecting the GUI.
+
+  Bug fixes
+  - Fixed: Mixes dates for ftp files (thinks some files are created 1997, when
+    they were created late 1996).
+  - Fixed: "Copy As" for directories: "can't read "destfile": no such variable"
+  - Fixed: Error when copying FTP files that are links.
+  - Fixed: Searching in the viewer or internal editor affected the selection.
+
+  Notes
+  - Don't run FileRunner 2.1.3 on Tcl/Tk 8.0a1. It's too buggy. Tcl/Tk that is.
+
+--------------------------------------------------------------------------------
+2.1.2 - 1996-12-08
+
+  Features
+  - Fully user-defined bindings for to the View, UnPack and UnArchive 
+    operations. Re-generate the .fr settings file and see how they work.
+    Warning: your old changes to the config(cmd,unarc,xx), config(cmd,unpack,xx)
+    and config(cmd,arclist,xx) variables will not be used any more. See also 
+    below on "New config default values".
+  - You can now FTP to non-default ports. The format is 
+      ftp://ftp.foo.com:8080/pub/bar
+    Just leave the port stuff (:8080) out if you connect to port 21 
+    (normal FTP).
+
+  Bug fixes
+  - Stupid "Can't find $USER variable" bug should be gone. FR will now look
+    for the $LOGNAME variable if $USER cannot be found.
+  - FR now correctly resets iconname after an aborted FTP transfer.
+  - Matching on file name extensions are now case insensitive.
+  - FTP file listings now a little more robust. (Couldn't handle wuarchive
+    listings before).
+  - Sometimes FR came up with incorrect left/right start directories.
+  - Won't run the file panel updater if you're entering text in a text
+    entry. (Since this will take the focus away from the entry widget
+    and you don't notice you'll start typing keyboard shortcuts for 
+    FR commands... Bad :-)
+
+  New config default values:
+  - You HAVE to fix your config(view,extensions) variable to reflect the new
+    settings in this variable. For example, the rule for viewing .tar.gz 
+    files is now in this variable. If you just want to get the default
+    value for this variable into your .fr file, 1: edit the FR settings,
+    2: delete the parameter and 3: save, then 4: exit. 5: restart FR, 6:
+    save settings. Now the default value for this parameter will be in your 
+    .fr file. If you're running FR for the first time you don't have to 
+    bother with this.
+
+      set config(view,extensions) {
+        { {xmikmod {%s}}
+          {*.mod.gz *.s3m *.mtm *.stm *.xm *.uni *.mod} }
+        { {timidity {%s}}
+          {*.midi.gz *.midi *.mid.gz *.mid} }
+        { {xv -gamma 2.0 {%s}}
+          { *.bmp *.iff *.jpg *.pbm *.pgm *.png *.ppm *.tga 
+            *.tif *.tiff *.xbm *.xpm *.gif} }
+        { {gzip -dc {%s} | ghostview -}
+          { *.ps.gz } }
+        { {ghostview {%s}}
+          { *.ps } }
+        { {xanim {%s}}
+          {*.avi *.fli *.flc *.mpg} }
+        { {gzip -cd {%s} | tar tvf -} 
+          { *.tgz *.taz *.tar.z *.tar.gz }
+          -viewtext }
+        { {tar tvf {%s}}
+          {*.tar}
+          -viewtext }
+        { {unzip -lv {%s}}
+          {*.zip}
+          -viewtext }
+        { {lha -v {%s}}
+          {*.lha}
+          -viewtext }
+        { {gzip -cd {%s}}
+          {*.gz}
+          -viewtext }
+      }
+
+  - The new parameter for unarchiving stuff.
+
+      set config(cmd,unarc,extensions) {
+        { {gzip -cd {%s} | tar xfBp -}
+          {*.tgz *.taz *.tar.z *.tar.gz} }
+        { {tar xfBp {%s}}
+          {*.tar} }
+        { {unzip -oqq {%s}}
+          {*.zip} }
+        { {lha -x {%s}}
+          {*.lha} }
+      }
+
+  - The new parameter for unpacking stuff.
+      
+      set config(cmd,unpack,extensions) {
+        { {gzip -d {%s}}
+          {*.gz} }
+      }
+
+
+
+--------------------------------------------------------------------------------
+2.1.1 - 1996-11-03
+
+  Small features/other
+  - Changed to use Tcl/Tk 7.6/4.2. You can still run on 7.5/4.1 but 
+    you'll have to edit the scripts.
+  - Sort on reverse time added.
+  - New platform support: AIX.
+  - Support for system wide .fr file. (Sourced before the user's .fr file).
+  - FTP sorting on time now implemented.
+  - FTP: Selecting "show all files" now works.
+
+  Bug fixes
+  - Editing shell command color works.
+  - Usage of "tar" internally now doesn't use the -B flag (for HPUX).
+  - Using Tcl/Tk 7.6/4.2 seems to have fixed the infamous "grab failed" problem.
+  - Misc fixes.
+
+  Documentation
+  - Added a FAQ file with know bugs and common Q's and A's.
+
+
+
+--------------------------------------------------------------------------------
+2.1 - 1996-10-27
+
+  Features
+  - You can now copy both to and from an FTP site.
+  - Recursive copying of directories both to and from an FTP site.
+  - Makedir, Delete and Rename works in FTP. Recursive delete of FTP
+    directories implemented too.
+  - Rule based configuration of FTP site logins. For example always
+    login with username X and password Y to sites matching *.Z.com using
+    proxy P etc. See more in the online guide, chapter 8.8.
+  - Icon name now shows estimated time of arrival (ETA) for FTP transfers.
+  - Select All/Select None toggle button added to the lower right
+    ofthe file list panes. This is the button with letter S on it.
+  - If you enter a directory that doesn't exist you get the choice 
+    of editing the faulty directory or create it. This is a convenient 
+    way of creating new directories.
+  - The middle mouse button in the file list now work the same way
+    as mouse button 1 + ctrl. It doesn't deselect anything but just
+    toggles the previous selection. Try it. See chapter 3.3.4.1
+    for a list of available mouse operations.
+
+  Smaller features/changes
+  - When a new directory is created, all it's parent directories are created
+    also if they don't already exist.
+  - The escape button now works to exit the text viewer and editor.
+  - The Page up/down, Home/End keys work in the text viewer and editor without
+    first clicking in it.
+  - Default colors are changed to a cool metallic green. Just change it if you
+    don't like it...
+  - The Abort button is called Stop now.
+
+  Documentation
+  - Reworked chapter 8 about FTP.
+  - Reworked chapter 3.3.4.1 about mouse buttons in the file list. Here you
+    can now find a list of mouse operations available.
+  - Misc. changes.
+
+  Bug fixes
+  - User defined bindings from file extensions to action (e.g. .jpg -> 
+    launch image viewer) are now searched before the built-in bindings.
+  - FTP now correctly handles filenames with spaces in them,
+  - Hopefully the infamous "grab failed: application already has grab" 
+    will be a little less frequent. There is still a bug inside the Tk 
+    menu code that can trigger this bug.
+  - Move on FTP file crashed FR. (It can't move FTP files yet, but it 
+    shouldn't crash...)
+  - The recursive directory menu now correctly handles filenames with   
+    spaces in them.
+  - More misc. bug fixes.
+
+  There are new default values for the some parameters. If you already 
+  have a .fr file, you can see below what the new defauls are:
+    set config(gui,color_select) "#f1a9ec43aa9d"
+    set config(gui,color_scheme) "#d1f0dfbebd10"
+    set config(view,extensions) {
+        { {xmikmod {%s}}    { *.mod.gz *.s3m *.mtm *.stm *.xm *.uni *.mod } }
+        { {timidity {%s}}   { *.midi.gz *.midi *.mid.gz *.mid } }
+        { {xv -8 {%s}}      { *.bmp *.iff *.jpg *.pbm *.pgm *.png *.ppm 
+          *.tga *.tif *.tiff *.xbm *.xpm *.gif } }
+        { {gzip -dc {%s} | ghostview - } { *.ps.gz } }
+        { {ghostview {%s}} { *.ps } }
+      }
+    set config(cmd,touch) "touch"
+    set config(cmd,du) "du -s"
+
+  Known bugs
+  - There is still a problem with the grab failed thing that can pop up here 
+    and there. It seems to be a problem in the Tk menu implementation.
+    Anyone have any ideas how to get around this?
+
+
+
+--------------------------------------------------------------------------------
+2.0 - 1996-09-24
+
+  Features:
+  - Added shell windows. Activated by the button to the right of the up-dir
+    button at the top of the file list panes. This pops up a small built-in 
+    shell that lets you run commands inside FileRunner. Like a simple xterm/
+    shell session. The "current directory" of the left and right shell is 
+    always synchronized with the "current directory" of the respective file 
+    list panels. See the online guide for more on this.
+  - Asynchronous file operations added. Instead of pressing the left mouse 
+    button over the command buttons (like copy, delete etc...) you press the 
+    right mouse button over the buttons and the command is executed 
+    asynchronously (in the background).
+    For some buttons, this is not implemented (where the operation is very fast 
+    anyway, like doing soft links). This IS implemented for FTP,
+    which means you can mark 25 files and press the right mouse button
+    over the Copy button and have 25 parallell copyings going to the same
+    server... Be careful with this!
+    The drawback with asynchronous operations is that it won't tell you 
+    if things go wrong during a copy, etc (for some operations, though
+    it will print this to the standard error output for FileRunner). 
+    It will also increase the risk that the file panels aren't showing 
+    correct information (you'll have to use the Update button). For
+    ftp transfers, it will usually take longer since it has to start
+    another ftp session for every file it copies (in parallell).
+  - New config opttion [config(view,extensions)] that holds general rules for
+    which viewer to invoke on which file. For example *.jpg launches the 
+    image viewer and *.avi launches the movie viewer. This is now fully
+    user-configurable.
+  - Abort button added. This tries to abort the current command. For normal
+    file access commands (copy, move etc) it can only abort between two 
+    files, not in the middle of operating on a file (in the middle of copying 
+    a file). For FTP, you can abort in the middle of a transfer. The FTP 
+    link will be closed when you do this, but reopened the next time you 
+    access an FTP file.
+  - In conjunction with the abort button, added the clone button. Only these
+    two buttons may be pressed during execution of a command, like a long
+    FTP transfer, for example. The clone operation is gone from the File menu.
+  - Added back button (arrow left). Works just as the back button in 
+    Netscape.
+  - Added "Settings->Edit xxx color". Changes GUI colors on the fly.
+  - Added "Settings->Edit xxx font". Changes GUI fonts on the fly.
+  - New interface for User-defined buttons. See online guide.
+
+  Small features:
+  - Selection in file list panes now produce list of files when exported
+    to other apps (or inside FileRunner).
+  - Close button added to text viewer and text editor. (The little cross)
+  - "normal" Save option added to text editor menu. Don't use "save", 
+    then "quit" when editing config settings, use "save&quit" 
+    instead... (Or the config won't be read back in)
+  - File list panes now show selected / total entries.
+  - Added geometry config options that let's you set the size and position 
+    (in normal X11 syntax) for the main window, the text viewer window and 
+    the Quick-editor window, respectively.
+    [config(geometry,main), config(geometry,textviewer), 
+    config(geometry,qedit)] 
+  - Added "Settings->Set left start dir", "Setttings->Set right start dir"
+    that saves your position in the file list panels for next time 
+    you start. Quicker than editing the settings file by hand. You have 
+    to save your settings to store it to the .fr file.
+  - Added "Settings->Set window pos/size". Sets the config variable for
+    the main window geometry [config(geometry,main)]. You have to save 
+    your settings to store it to the .fr file.
+  - Added command "Utilities->Check Size of selected..." that counts the
+    size of selected files and directories and shows the result
+    in kilobytes. Note that this uses the du -s command and you might
+    have to add the -k flag here to get the answer in kilobytes on some
+    platforms (like Solaris 2.x). Do that in the Settings->Edit Settings
+    command [config(cmd,du)].
+  - Added "Utilities->Swap Windows" that swaps the left and right directories
+    shown.
+  - Added a "little" keyboard support. If you set the config variable
+    config(keyb_support) to 1, FileRunner activates keyboard support.
+    Currently this is not very extensive. See online guide for more
+    info on this.
+    Config variable config(keyb_listb_support) has changed name to 
+    config(keyb_support) and changed semantics to mean general 
+    keyboard support on/off.
+  - If you press the right mouse button in the directory entry, a requester
+    pops up asking you to type a new path. This is sometimes faster than
+    going to the directory entry and then clearing it, and then entering
+    the new directory.
+  - Changed the Update button to an iconized button. Due to lack of
+    space. Sorry for this, it makes it harder to understand...
+
+  Bugfixes:
+  - Commands will now tell you if there are stuff they cannot do, like 
+    doing a soft link from an FTP file. (Instead of just doing nothing)
+  - Window is repainted correctly during long FTP transfers. This also makes
+    the window react to the quit-window (delete) command sent to it from the
+    window manager during transfers.
+  - Bugfix: When history got longer than xx entries, it got truncated 
+    to 0... Now only the oldest entries are deleted (as it should be)
+  - Exiting FTP connections is now faster/more reliable.
+  - FTP client now changes server socket for data connections on every command.
+    Sometimes FTP servers had problems with using the same server socket
+    every time, giving error codes 425 and 500 (?).
+  - Bugfix: When deleting a directory displayed by FileRunner, it would
+    crash. (Stupid bug, since it was designed to handle this...)
+  - Bugfix: Sometimes FR would fail with "grab failed: another application 
+    has grab" It looks like the grab fails for a reason I cannot determine. 
+    It shouldn't fail. A workaround for this is that you now get a warning if 
+    a grab fails. If you don't do anything stupid (like trying to start another
+    command before the first one is finished) you should be OK. Anyone got an
+    idea why this happens and how to handle it better?
+
+
+
+--------------------------------------------------------------------------------
+1.2 - 1996-08-24
+  - Default "unzip {%s}" command changed to "unzip -oqq {%s}"
+    You have to change this in your .fr file if you already have a .fr file.
+  - No more crashes when FileRunner tries to stat a file that disappeared 
+    between getting the directory list and the actual stat'ing.
+  - Viewing .gz files now works. (Just right-click on any gzipped text file)
+  - RunCmd and C-Select button moved to Utilities menu. 
+  - S-LnAs (Soft-Link As..) command button added.
+  - Copying links: Copying a link to a file will copy the file, not the 
+    link. Copying a link to a directory will copy the directory, not the 
+    link. This is new behaviour.
+  - Fixed Makefile.cc and ext.c so it will compile on Unixware and IRIX
+  - Color for selection in listbox now configurable.  
+    [config(gui,color_select)]
+  - Fixed: Choosing a list of files, then pressing Edit or View(Image).
+    (This is supposed to pass the whole list of files to the editor/image 
+    viewer)
+  - Added mod and midi extensions and mod and midi player commands.
+    [config(cmd,play,sound,mod) and config(cmd,play,sound,midi)]
+  - Added config option to allow listboxes to take focus when clicked. Gives
+    some more control over keyboard access to the file list. Default off.
+    [config(keyb_listb_support)]
+  - Added config options to decide whether you want FileRunner to ask "Are
+    you sure?" when deleting directories or files, respectively.
+    [config(ask,dir_delete) and config(ask,file_delete)]
+  - FTP transfers now show total average speed at the end of the transfer.
+
+
+
+--------------------------------------------------------------------------------
+1.1 - First public release 1996-08-11
+
+
+--------------------------------------------------------------------------------
+1.0 - Internal release
+
+
+

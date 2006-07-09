@@ -1,0 +1,251 @@
+$Id: README,v 1.1 2006/07/09 10:10:13 butz Exp $
+
+
+
+FILERUNNER
+==========
+
+Version 2.5.1
+
+(C) 1996-1999 Henrik Harmsen
+
+FileRunner is an X11 file manager for Unix. It is simple and efficient
+and has a built-in FTP client.
+
+FEATURES
+========
+
+  * Simple and powerful interface.
+  * History and Hotlist (bookmarks).
+  * Recursive directory menu of entire file system tree.
+  * Browse FTP directories as easy as normal directories.
+  * FTP capabilities:
+    - Copy: FTP files/directories upload/download (recursive).
+    - FTP Delete (recursive), FTP Makedir, FTP Rename.
+    - Supports FTP through proxy.
+    - FTP resume download function.
+    - Rule based configuration of FTP site logins (password/user/proxy).
+    - Asynchronous file transfer.
+    - Cached directory listings.
+  * Asynchronous file operations.
+  * Built-in command shell windows. Synchronized with file panels.
+    These have history, aliases and file name completion.
+  * Extendable by adding your own command buttons.
+  * Very configurable.
+  * User defined file pattern / actions. (*.jpg -> launch image viewer etc.)
+  * Distributed under the GNU General Public License.
+
+REQUIREMENTS
+============
+
+* A standard Unix platform.
+* Tcl/Tk 8.0 or later.
+* An ANSI C compiler if you can not use the precompiled binaries.
+
+FileRunner does not need rebuilding the wish binary. It uses the
+binary extension mechanism in Tcl to add commands written in C.
+
+
+COMPATIBLE PLATFORMS
+====================
+
+FileRunner has been verified to work on:
+
+ - Linux
+ - SunOS 4.x
+ - Solaris 2.x
+ - Irix 5.x
+ - UnixWare 2.x
+ - HP-UX
+ - Dec Alpha OSF (Digital Unix)
+ - FreeBSD
+ - SCO OpenServer
+ - AIX
+ - NetBSD
+
+
+INSTALLATION
+============
+
+Installation is fairly simple. The main thing to note here is that you
+unpack directly to where the stuff is to be installed. You never do a
+"make install". 
+
+
+  0. If you have installed through a RedHat rpm package.
+  ------------------------------------------------------
+
+If you have obtained FileRunner in a RedHat rpm, then all of this is
+done. The program should be possible to start by running:
+
+  $ fr &
+
+Possibly you need to run "rehash" in your shell first. Then you can
+skip the rest of this chapter. Otherwise, there are a few simple steps
+to follow:
+
+  1. Unpack
+  ---------
+
+The first step is to get the archive unpacked.
+Example:
+
+  $ cd /usr/local/lib
+  $ gzip -cd FileRunner-2.5.1.tar.gz | tar xf -
+  $ cd FileRunner-2.5.1
+
+You don't have to install in /usr/local/lib, you can install anywhere,
+just make sure the link in step 3 is correct.
+
+
+  2. Fixing an ext.so file
+  ------------------------
+
+FileRunner needs a library of functions that have been written in C. The
+necessary library has been precompiled on a few platforms.
+
+- If you are running Linux on an Intel machine, this is done. Go to step 3.
+
+- If you are running SunOS 4.1.x on a Sparc machine, copy
+  ext.so.sunos4_sparc to ext.so, then go to step 3.
+
+- If you are running Solaris 2.5 or later on a Sparc machine, copy
+  ext.so.sunos5_sparc to ext.so, then go to step 3.
+
+Otherwise:
+
+If you don't have any of the above, you should try to build it
+yourself. There are a bunch of Makefiles in the "Makefiles" directory
+to try. Pick one of the Makefiles you think might work and edit it to
+reflect the platform you are using. It's a tiny Makefile, so it
+shouldn't be too difficult. When choosing a makefile to edit, the
+first choice should be a pre-existing makefile with the same OS, not
+the same compiler. When you have edited the makefile run:
+
+  $ make -f Makefiles/Makefile.xxx
+
+When you have an ext.so file you can try it out by running the "fr"
+script: "./fr &"
+
+If you have previously installed and built an earlier version of
+FileRunner, then you can avoid rebuilding the ext.so file by copying
+that from the older build. Just check that ext.c hasn't changed
+between the old installation and the new (if it has, you need to
+rebuild). One day when I have loads of time on my hands I might
+consider using the GNU autoconf utility to avoid this mess of
+Makefiles... :-)
+
+
+  3. Making a soft link
+  ---------------------
+
+The final stage of installation is to soft-link the fr script to where
+you want installed in your path. If you want it in /usr/local/bin, and
+you unpacked the FileRunner archive under /usr/local/lib, you do the
+following:
+
+  $ ln -s /usr/local/lib/FileRunner-2.5.1/fr /usr/local/bin/fr
+
+It's important you make this a soft link and not just copy it. If you
+don't, FileRunner will not find the rest of itself and will not start
+up. It uses the link to find the necessary stuff it needs.
+
+Last note: There is an icon GIF file "fr.gif" you can use if you need an
+icon for FileRunner. I've tried to make a color icon default for
+FileRunner but I can not figure out how to do this in Tcl/Tk...
+
+
+  4. If you installed as root
+  ---------------------------
+
+If you have installed FileRunner as root you probably have erroneous
+owner/group id's of the installed files. Do the following (as root):
+
+  # chown -R root FileRunner-2.5.1
+  # chgrp -R root FileRunner-2.5.1
+  # chmod -R go-w FileRunner-2.5.1
+
+To fix permissions and ownership of the files.
+
+
+WHERE TO GET FILERUNNER
+=======================
+
+Use one of these sites:
+
+http://www.cd.chalmers.se/~hch/filerunner.html
+ftp://sunsite.unc.edu/pub/Linux/X11/desktop/FileRunner-2.5.1.tar.gz
+
+
+WHERE TO GET TCL/TK
+===================
+
+Please see the web page at
+http://www.cd.chalmers.se/~hch/filerunner.html
+
+
+COMMON PROBLEMS
+===============
+
+See the FAQ-file in the installation. Please also see chapter 13 in
+the online guide.
+
+
+KNOWN BUGS
+==========
+
+Please see the file KnownBugs.txt.
+
+
+E-MAIL LIST WITH ANNOUNCEMENTS
+==============================
+
+Mail me if you are interested to be on the FileRunner announcement
+mailing list. I won't send announcements of every release to the
+newsgroups so if you want to know if a new release is out you should
+either check the web page regularly or join the list.
+
+
+FILERUNNER IS OPEN SOURCE SOFTWARE
+==================================
+
+FileRunner is Open Source software and is distributed under the GNU
+General Public License. If you like it, send me a cool postcard so I
+can fill the front of my fridge :-) See the end of the User's Guide
+for my address.
+
+FileRunner is Copyright (C) 1996-1999 Henrik Harmsen.
+
+
+  Henrik Harmsen
+
+Email:
+  hch@cd.chalmers.se
+  Henrik.Harmsen@erv.ericsson.se
+
+For more contact info see online guide.
+
+
+ADDENDUM
+========
+
+Note 1, The Debian distribution
+-------------------------------
+
+This note is to the manager of the Debian distribution.
+
+To have the documentation for FileRunner somewhere other than in the
+distribution directory (where all the other FileRunner stuff is):
+Create a file in the distribution directory called "config" and put
+the following line into this:
+
+set glob(doclib_fr) /usr/local/doc/FileRunner
+
+(Adjust it to the correct location). Then copy over the documentation
+to this directory. See the online guide, chapter 6, about the
+system-wide config file.
+
+
+
+
+

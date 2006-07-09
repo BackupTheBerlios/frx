@@ -1,0 +1,40 @@
+$Id: Tips.txt,v 1.1 2006/07/09 10:10:14 butz Exp $
+
+Small tips and tricks for more effective use of FileRunner
+
+So far I've only thought of two... :-) 
+
+
+1. HTTP download.
+
+When surfing the web with Netscape which has a really lousy file
+download function (always drops download after 90% without saying a
+word) use FileRunner instead like this: Point to the link in Netscape
+and choose "Copy Link to ClipBoard", then right-click on one of the
+directory entries in FileRunner and paste the link into the entry,
+edit it, and then hit return. When the directory comes up, get the
+file with FileRunner instead. This is really fast and very
+useful. This can now also be done for HTTP downloads, choose
+"Etc->HTTP Download...".
+
+2. How to view .html files in Netscape from FileRunner.
+
+It is convenient to view .html files by right-clicking on them. Here
+is how to do it: First, add the following to your
+config(view,extensions) variable:
+
+  { {viewhtml {%s}}
+    {*.html} }
+
+Then create a script called viewhtml that looks like this:
+
+#!/bin/csh -f
+netscape -remote openFile\("$argv"\)
+
+The work-around with the external script is needed because tclsh won't
+do the normal evaluation on lists inside ( ).
+
+
+
+If you have a good tip to share with other FileRunner users, please
+send it to the author.

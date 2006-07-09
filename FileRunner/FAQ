@@ -1,0 +1,55 @@
+$Id: FAQ,v 1.1 2006/07/09 10:10:02 butz Exp $
+
+Before you send me mail of something doesn't work please check this
+list and see if there is something that matches your problem.
+
+--------------------------------------------------------------------
+Q. Why is FileRunner complaining about dynamic linking not being
+available on my system?
+
+A. FileRunner uses the "load" command in tclsh to dynamically link in
+the part of FileRunner that is written in C. This makes it unnecessary
+to rebuild a whole new wish shell just to have a few extra
+commands. (So it saves a lot of RAM and time). On some older Linux
+platforms, the dynamic linking stuff is too old for this to work
+correctly. It seems that you need to update /lib/ld.so and probably
+also the /lib/libdl.so library. Note that the safest way of doing this
+is to grab a whole new set of libraries from sunsite.unc.edu (under
+the Linux/GCC directory) and install that. It looks like the Slackware
+96 distribution has this problem and needs to be updated. When you've
+got the new /lib/ld.so file and the rest of that stuff you need to
+rebuild your Tcl/Tk stuff. (Or get a prebuilt binary, see next
+question). When you rebuild it, the config script will tell you
+whether or not dynamic linking will be available. If anyone has any
+more info on this or might want to correct me, please send me an
+email.
+
+--------------------------------------------------------------------
+Q. Can I use beta versions of Tcl/Tk with FileRunner?
+
+A. No. (Well you can, but it is a source of bugs I don't want to
+handle).
+
+--------------------------------------------------------------------
+Q. I get this error when I start up. Why?
+
+error while autoloading "load": bad option "join": should be atime,
+dirname, executable, exists, extention, isdirectory, isfile , lstat,
+mtime, owned, readable, readlink, root, size, stat, tail, type, or
+writable
+
+A. You have an old tcl/tk installation. Please get a new.
+
+--------------------------------------------------------------------
+Q. I get this error when I start up FR on Linux. Why?
+
+wish4.1: can't resolve symbol 'getgrgid'
+wish4.1: can't resolve symbol 'statfs'
+
+A. I'm guessing you need to rebuild your tcl/tk installation. Are you
+running a really new libc?
+
+---------------------------------------------------------------------
+
+For a list of known bugs, please see the file KnownBugs.txt.
+

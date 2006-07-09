@@ -1,0 +1,13 @@
+# Change this if you have this stuff somewhere else.
+TCLINC = /usr/local/lib/tcl8.0
+TKINC  = /usr/local/lib/tk8.0
+X11INC = /usr/X11/include
+
+CFLAGS = -DIRIX -kpic -I$(TCLINC) -I$(TKINC) -I$(X11INC)
+
+CC = cc
+
+all: ext.so
+
+ext.so: ext.o
+	ld -shared -o ext.so ext.o

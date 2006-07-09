@@ -1,0 +1,94 @@
+#!/usr/bin/env wish
+
+# $Id: frftp,v 1.1 2006/07/09 10:10:08 butz Exp $
+
+proc ShowWindow { realhost file } {
+
+  wm title . "FileRunner [file tail $realhost$file] download"
+  wm iconname . "FR [file tail $realhost$file] download"
+  wm protocol . WM_DELETE_WINDOW { exit 0 }
+
+  frame .top -bd 0
+  label .top.stat -text "Hang On..." -width 50 -wraplength 10c -pady 10
+  button .top.abort -text "Cancel" -command "exit 0"
+  pack .top
+  pack .top.stat -side top -expand 1 -fill x
+  pack .top.abort -side bottom 
+}
+
+proc Log { text } {
+  .top.stat configure -text "$text"
+  update
+}
+
+proc LogStatusOnly { text } {
+  Log $text
+}
+
+proc LogSilent { text } { }
+
+proc PopError { error } {
+  tk_dialog .apop "**Error**" "$error" "" 0 "OK"
+  exit 1
+}
+
+proc PopWarn { error } {
+  tk_dialog .apop "Warning" "$error" "" 0 "OK"
+}
+
+#puts "$argv"
+set glob(lib_fr) [lindex $argv 1]
+
+set r [catch { source $glob(lib_fr)/ftp.tcl } out]
+if { $r != 0 } {
+  PopError "Error loading FTP code:\n\n$out"
+}
+
+set r [catch { load $glob(lib_fr)/ext.so Ext } out]
+if { $r != 0 } {
+  PopError "Error loading FileRunner binary extensions code:\n\n$out"
+}
+
+proc FTP_Transfer { wish lib_fr timeout ftpI host user passwd realhost file_src file_dest exp_size resume } {
+  Log "Opening FTP connection to $realhost..."
+  set r [catch { FTP_OpenSession $ftpI $host $user $passwd $realhost } out ]
+  if {$r} {
+    PopError "FTP connecting: $out"
+  } else {
+    Log "FTP connection to $realhost open"
+  }
+  set r [catch { FTP_GetFile $ftpI $file_src $file_dest $exp_size $resume} out]
+  if {$r} {
+    PopError "FTP transfer failed: $out"
+  } else {
+    #Log "FTP transfer OK"
+    after 2000
+  }
+  exit 0
+}
+
+proc Try { tryscript excuse alsoPrintErrorInfo } {
+  #puts "Try:$tryscript"
+  set r [catch {uplevel $tryscript} outp ]
+  if {$r == 0} {return 0}
+  if {$alsoPrintErrorInfo} {
+    if {$excuse != ""} {
+      PopError "$excuse\n$outp"
+    } else {
+      PopError "$outp"
+    }
+  } else {
+    PopError "$excuse"
+  }
+  return 1
+}
+
+ShowWindow [lindex $argv 7] [lindex $argv 8]
+set glob(abortcmd) 0
+set config(ftp,timeout) [lindex $argv 2]
+set config(ftp,cache,maxentries) 1
+set ftp(cache) ""
+set ftp(cache,file) ""
+set config(dateformat) "yymmdd"
+eval FTP_Transfer $argv
+

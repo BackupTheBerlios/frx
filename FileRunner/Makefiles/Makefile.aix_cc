@@ -1,0 +1,24 @@
+
+# This makefile is for IBM's cc compiler on AIX 4
+
+# Change this if you have this stuff somewhere else.
+TCLINC = /usr/local/lib/tcl8.0
+TKINC  = /usr/local/lib/tk8.0
+X11INC = /usr/X11/include
+
+CFLAGS = -DAIX -O -I$(TCLINC) -I$(TKINC) -I$(X11INC)
+
+CC = cc
+
+all: ext.so
+
+ext.o: ext.c
+	$(CC) -c $(CFLAGS) ext.c
+
+ext.exp: ext.o
+	echo '#! ext.so' >ext.exp
+	nm ext.o | awk '$$2=="D" {print $$1}'|sort|uniq >>ext.exp
+
+ext.so: ext.o ext.exp
+	ld ext.o -o ext.so  -bE:ext.exp -bM:SRE -L/anw/lib \
+	 -ltcl8.0 -ltk8.0 -lc -bnoentry

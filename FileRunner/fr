@@ -1,0 +1,3317 @@
+#!/usr/bin/env wish
+
+# $Id: fr,v 1.1 2006/07/09 10:10:07 butz Exp $
+
+set glob(version) 2.5.1
+
+proc bgerror err {
+  global errorInfo env glob tcl_patchLevel tk_patchLevel
+  set info $errorInfo
+  set button [tk_dialog .bgerrorDialog "Fatal error in Tcl Script" \
+                  "You have found a bug. It might be in FileRunner.\n\n$err\n\nPlease send a bugreport to the author." \
+                  error 0 "Exit" "See Stack Trace" "Prepare bugreport"]
+  if {$button == 0} {
+    exit 1
+  }
+  if {$button == 2} {
+    set r [catch {open $env(HOME)/filerunner_bugreport w} fid]
+    if {$r} { tk_dialog .bugrepinfo "Error" "Can't create file $env(HOME)/filerunner_bugreport to dump bugreport\n$fid" "" 0 "Exit" ; exit 1}
+    puts $fid "\nBugreport for FileRunner version $glob(version) created [clock format [clock seconds]].\n"
+    puts $fid "Please fill in/correct the rest of this and send it to hch@cd.chalmers.se or Henrik.Harmsen@erv.ericsson.se.\n\n"
+    set r [catch { exec uname -a } output]
+    if {$r} { set output "" }
+    puts $fid "Operating System : $output"
+    puts $fid "Tcl/Tk version   : $tcl_patchLevel / $tk_patchLevel"
+    puts $fid "Comments         : "
+    puts $fid "\nError string : $err"
+    puts $fid "\nStack trace follows:\n--------------------\n$info"
+    catch {close $fid}
+    tk_dialog .bugrepinfo "Error" "Bugreport file saved to\n$env(HOME)/filerunner_bugreport. Please fill in the rest of it and send it to the author." "" 0 "Exit"
+    exit 1
+  }
+
+  set w .bgerrorTrace
+  catch {destroy $w}
+  toplevel $w -class ErrorTrace
+  wm protocol $w WM_DELETE_WINDOW { exit 1 }
+  wm minsize $w 1 1
+  wm title $w "Stack Trace for Error"
+  wm iconname $w "Stack Trace"
+  button $w.ok -text Exit -command "exit 1"
+  text $w.text -yscrollcommand "$w.scroll set" -setgrid true -width 60 -height 20
+  scrollbar $w.scroll  -command "$w.text yview"
+  pack $w.ok -side bottom -padx 3m -pady 2m
+  pack $w.scroll -side right -fill y
+  pack $w.text -side left -expand yes -fill both
+  $w.text insert 0.0 $info
+  $w.text mark set insert 0.0
+
+  # Center the window on the screen.
+
+  wm withdraw $w
+  update idletasks
+  set pw [winfo parent $w]
+  set x [expr [winfo width $pw]/2 - [winfo reqwidth $w]/2 \
+      + [winfo x $pw]]
+  set y [expr [winfo height $pw]/2 - [winfo reqheight $w]/2 \
+      + [winfo y $pw]]
+  wm geom $w +$x+$y
+  wm deiconify $w
+
+  # Be sure to release any grabs that might be present on the
+  # screen, since they could make it impossible for the user
+  # to interact with the stack trace.
+
+  if {[grab current .] != ""} {
+    grab release [grab current .]
+  }
+}
+
+proc ShowWindow {} {
+  global glob tk_version argv argv0 config env win
+  wm positionfrom . user
+  wm sizefrom . ""
+  wm title . "FileRunner  v$glob(version)"
+  wm geometry . $config(geometry,main)
+  wm protocol . WM_DELETE_WINDOW { CleanUp 0 }
+  wm iconname . "FileRunner v$glob(version)"
+  wm command . [concat $argv0 $argv]
+  wm group . .
+  frame .fupper 
+  frame .flower 
+  # Main menu
+  set glob(mainmenu) [ menu .mainmenu ]
+  . configure -menu $glob(mainmenu)
+  # Status bar
+  label .status -anchor w -text {}
+
+  # Create FILE menu
+  menu $glob(mainmenu).filemenu -tearoff false
+  $glob(mainmenu).filemenu add command -label About... -command About
+  $glob(mainmenu).filemenu add command -label "View Log..." -command { ViewString "Log" glob(log) $env(HOME)/filerunner.log }
+  $glob(mainmenu).filemenu add command -label Quit -command { CleanUp 0 }
+  $glob(mainmenu) add cascade -label "File" -menu $glob(mainmenu).filemenu
+
+  # Create EDIT menu
+  menu $glob(mainmenu).editmenu -tearoff false
+  $glob(mainmenu).editmenu add command -label "Select All" -command {ToggleSelect $glob(active)}
+  $glob(mainmenu) add cascade -label "Edit" -menu $glob(mainmenu).editmenu
+
+  # Create CONFIGURATION menu
+  menu $glob(mainmenu).confmenu -tearoff false 
+  $glob(mainmenu).confmenu add command -label {Save Configuration} -command SaveConfig
+  $glob(mainmenu).confmenu add command -label {Edit Configuration...} -command ConfigBrowser
+  $glob(mainmenu).confmenu add command -label {Reread Configuration} -command {
+      ReadConfig;UpdateWindow both;Log "Configuration re-read"
+    }
+  $glob(mainmenu).confmenu add separator
+  $glob(mainmenu).confmenu add check -label "Show All Files" -variable config(fileshow,all) -command ForceUpdate
+  $glob(mainmenu).confmenu add check -label "Create Relative Links" -variable config(create_relative_links) 
+  $glob(mainmenu).confmenu add check -label "Run Pwd After Cd" -variable config(cd_pwd) 
+  $glob(mainmenu).confmenu add check -label "Run Pwd After Cd (FTP)" -variable config(ftp,cd_pwd) 
+  $glob(mainmenu).confmenu add check -label "Anonymous FTP" -variable config(ftp,anonymous) 
+  $glob(mainmenu).confmenu add check -label "Use FTP Proxy" -variable config(ftp,useproxy) 
+  $glob(mainmenu).confmenu add separator
+  $glob(mainmenu).confmenu add radio -label "Sort On Name" -variable config(fileshow,sort) -value nameonly -command ForceUpdate
+  $glob(mainmenu).confmenu add radio -label "Sort Dirs First" -variable config(fileshow,sort) -value dirsfirst -command ForceUpdate
+  $glob(mainmenu).confmenu add radio -label "Sort Dirs Last" -variable config(fileshow,sort) -value dirslast -command ForceUpdate
+  $glob(mainmenu).confmenu add radio -label "Sort On Time" -variable config(fileshow,sort) -value time -command ForceUpdate
+  $glob(mainmenu).confmenu add radio -label "Sort On Reverse Time" -variable config(fileshow,sort) -value rtime -command ForceUpdate
+  $glob(mainmenu).confmenu add radio -label "Sort On Size" -variable config(fileshow,sort) -value size -command ForceUpdate
+  $glob(mainmenu).confmenu add radio -label "Sort On Extension" -variable config(fileshow,sort) -value extension -command ForceUpdate
+  $glob(mainmenu).confmenu add separator
+  $glob(mainmenu).confmenu add command -label {Edit Entry BG Color...} -command "EditColor color_bg"
+  $glob(mainmenu).confmenu add command -label {Edit Entry FG Color...} -command "EditColor color_fg"
+  $glob(mainmenu).confmenu add command -label {Edit Selection BG Color...} -command "EditColor color_select_bg"
+  $glob(mainmenu).confmenu add command -label {Edit Selection FG Color...} -command "EditColor color_select_fg"
+  $glob(mainmenu).confmenu add command -label {Edit Shell Cmd Color...} -command "EditColor color_cmd"
+  $glob(mainmenu).confmenu add command -label {Edit Scheme Color...} -command "EditColor color_scheme"
+  $glob(mainmenu).confmenu add command -label {Edit Cursor Color...} -command "EditColor color_cursor"
+  $glob(mainmenu).confmenu add command -label {Edit Entry Font...} -command "EditFont font"
+  $glob(mainmenu).confmenu add command -label {Edit Scheme Font...} -command "EditFont font_scheme"
+  $glob(mainmenu).confmenu add separator
+  $glob(mainmenu).confmenu add command -label {Set Left Start Dir} -command "DoProtCmd \"SetStartDir left\""
+  $glob(mainmenu).confmenu add command -label {Set Right Start Dir} -command "DoProtCmd \"SetStartDir right\""
+  $glob(mainmenu).confmenu add command -label {Set Window Pos/Size} -command "SetWinPos"
+  $glob(mainmenu) add cascade -label "Settings" -menu $glob(mainmenu).confmenu
+
+  # Create Utilities menu
+  menu $glob(mainmenu).toolsmenu -tearoff false 
+  $glob(mainmenu).toolsmenu add command -label {Swap Windows} -command "DoProtCmd CmdSwapWindows"
+  $glob(mainmenu).toolsmenu add command -label {View As Text} -command "DoProtCmd CmdViewAsText"
+  $glob(mainmenu).toolsmenu add command -label {What Is?...} -command "DoProtCmd CmdWhatIs"
+  $glob(mainmenu).toolsmenu add command -label {Select On Contents...} -command "DoProtCmd CmdCSelect"
+  $glob(mainmenu).toolsmenu add command -label {Run Command On Selected...} -command "DoProtCmd CmdRunCmd"
+  $glob(mainmenu).toolsmenu add command -label {Check Size Of Selected...} -command "DoProtCmd CmdCheckSize"
+  $glob(mainmenu).toolsmenu add command -label {FTP Copy With Resume} -command {DoProtCmd {CmdCopy 1}}
+  $glob(mainmenu).toolsmenu add command -label {FTP Copy With Resume/Async} -command {set glob(async) 1; DoProtCmd {CmdCopy 1}; set glob(async) 0}
+  $glob(mainmenu) add cascade -label "Tools" -menu $glob(mainmenu).toolsmenu
+
+  # Create Bookmarks menu
+  $glob(mainmenu) add cascade -label "Bookmarks" -menu $glob(mainmenu).bookmarksmenu
+  menu $glob(mainmenu).bookmarksmenu -tearoff false -postcommand { CreateHotListMenu $glob(active); update idletasks }
+
+  # Create History menu
+  $glob(mainmenu) add cascade -label "History" -menu $glob(mainmenu).historymenu
+  menu $glob(mainmenu).historymenu -tearoff false -postcommand { CreateHistoryMenu $glob(active); update idletasks }
+
+  # Create Extras menu
+  $glob(mainmenu) add cascade -label "Extras" -menu $glob(mainmenu).extrasmenu
+  menu $glob(mainmenu).extrasmenu -tearoff false
+  $glob(mainmenu).extrasmenu add command -label {Find File...} -command { DoProtCmd "CmdFind $glob(active)" }
+  $glob(mainmenu).extrasmenu add command -label {Create Empty File...} -command { DoProtCmd "CmdCreateEmptyFile $glob(active)" }
+  $glob(mainmenu).extrasmenu add command -label {Recurse Command...} -command { DoProtCmd "CmdRecurseCommand $glob(active)" }
+  $glob(mainmenu).extrasmenu add command -label {Add To FTP Batch List} -command { AddToBatchList $glob(active) }
+  $glob(mainmenu).extrasmenu add command -label {View FTP Batch List} -command { ViewBatchList }
+  $glob(mainmenu).extrasmenu add command -label {Clear FTP Batch List} -command { set glob(batchlist) {} }
+  $glob(mainmenu).extrasmenu add command -label {FTP Batch Receive} -command { DoProtCmd "BatchReceiveFTP $glob(active)" }
+  $glob(mainmenu).extrasmenu add command -label {HTTP Download} -command { DoProtCmd "CmdGetHttp $glob(active)" }
+
+  # Create Help menu
+  menu $glob(mainmenu).helpmenu -tearoff false 
+  $glob(mainmenu).helpmenu add command -label {QuickStart} -command   { ViewText $glob(doclib_fr)/QuickStart.txt }
+  $glob(mainmenu).helpmenu add command -label {User's Guide} -command { ViewText $glob(doclib_fr)/Users_Guide.txt }
+  $glob(mainmenu).helpmenu add command -label {Copying} -command { ViewText $glob(doclib_fr)/COPYING }
+  $glob(mainmenu).helpmenu add command -label {History} -command   { ViewText $glob(doclib_fr)/HISTORY }
+  $glob(mainmenu).helpmenu add command -label {Installation} -command   { ViewText $glob(doclib_fr)/README }
+  $glob(mainmenu).helpmenu add command -label {FAQ} -command   { ViewText $glob(doclib_fr)/FAQ }
+  $glob(mainmenu).helpmenu add command -label {Tips} -command   { ViewText $glob(doclib_fr)/Tips.txt }
+  $glob(mainmenu).helpmenu add command -label {Known Bugs} -command   { ViewText $glob(doclib_fr)/KnownBugs.txt }
+  $glob(mainmenu) add cascade -label "Help" -menu $glob(mainmenu).helpmenu
+
+  label .status.clock -relief sunken -text "[Time]"
+  pack [ label .status.filler -width 2 -height 1 ] -side right
+  pack .status.clock -side right
+
+  if {[GetEuid] == 0} {
+    label .status.user -relief sunken -text "root@$env(HOST)  "
+  } else {
+    label .status.user -relief sunken -text "$env(USER)@$env(HOST)  "
+  }
+  pack .status.user -side right
+
+  BuildFileListPanel left
+  BuildFileListPanel right
+
+  frame $glob(win,middle)   
+
+  set glob(cmds,list)  { 
+    { { ->      CmdToright } { <-      CmdToleft } }
+    { Copy      CmdCopy c 0 } 
+    { CopyAs    CmdCopyAs "" 0 } 
+    { Delete    CmdDelete d 0 }
+    { Move      CmdMove m 0 }
+    { Rename    CmdRename r 0 }
+    { MkDir     CmdMakeDir "" 0 } 
+    { S-Link    CmdSoftLink s 0 } 
+    { S-LnAs    CmdSoftLinkAs "" 0 } 
+    { Chmod     CmdChmod h 1 } 
+    { View      CmdView v 0 } 
+    { Edit      CmdEdit e 0 } 
+    { Q-Edit    CmdQEdit q 0 } 
+    { Arc       CmdArc a 0 } 
+    { UnArc     CmdUnArc u 0 } 
+    { UnPack    CmdUnPack p 2 } 
+    { ForEach   CmdForEach "" 0 } 
+    { Print     CmdPrint "" 0 } 
+    { Diff      CmdDiff f 2 } 
+    { Select    CmdSelect "" 0 } 
+  }
+
+# moved    { C-Select  CmdCSelect } 
+# moved    { RunCmd    CmdRunCmd } 
+
+  set foo {}
+  foreach k $config(usercommands) {
+    lappend foo [list [lindex $k 0] [list DoUsrCmd [lindex $k 1]]]
+  }
+
+  set glob(cmds,list) "$glob(cmds,list) $foo"
+
+  set glob(cmds,cur) 0
+
+  label $glob(win,middle).toplabel -height 2
+  pack $glob(win,middle).toplabel -side top -fill both
+
+  set n 0
+  foreach c $glob(cmds,list) {
+    if {$n == 0} {
+      frame $glob(win,middle).$n 
+      set ::GImgArr(right) [image create photo -file $glob(lib_fr)/bitmaps/right.ppm]
+      set ::GImgArr(left) [image create photo -file $glob(lib_fr)/bitmaps/left.ppm]
+      button $glob(win,middle).$n.1 -image $::GImgArr(right) -command "DoProtCmd [lindex [lindex $c 0] 1]"
+      button $glob(win,middle).$n.2 -image $::GImgArr(left) -command "DoProtCmd [lindex [lindex $c 1] 1]"
+      pack $glob(win,middle).$n.2 -side left -expand 1 -fill x
+      pack $glob(win,middle).$n.1 -side right -expand 1 -fill x
+      pack $glob(win,middle).$n -side top -fill x
+    } else {
+      set text [lindex $c 0]
+      button $glob(win,middle).$n -text $text -command "set glob(mbutton) 1; DoProtCmd \"[lindex $c 1]\"" 
+      foreach colentry $config(middle_button_colors) {
+        set name [lindex $colentry 0]
+        set col [lindex $colentry 1]
+        if { $text == $name } {
+          if { [string index $col 0] == "-" } {
+            $glob(win,middle).$n configure -activebackground [string range $col 1 end]
+          } else {
+            $glob(win,middle).$n configure -background $col -activebackground [LighterColor $col]
+          }
+        }
+      }
+      if {[lindex $c 2] != "" && $config(keyb_support)} {
+        $glob(win,middle).$n configure -underline [lindex $c 3]
+      }
+      bind $glob(win,middle).$n <3> "set glob(mbutton) 2; set glob(async) 1; DoProtCmd \"[lindex $c 1]\"; set glob(async) 0"
+      bind $glob(win,middle).$n <2> "set glob(mbutton) 3; DoProtCmd \"[lindex $c 1]\""
+      pack $glob(win,middle).$n -side top -fill x
+    }
+    incr n
+  }
+
+  # Build command windows
+  BuildCmdWindow left
+  BuildCmdWindow right
+
+  pack .fupper -side top    -expand 1 -fill both
+  pack .flower -side bottom -expand 1 -fill both
+  pack .status -side bottom -expand 0 -fill x
+  pack $glob(win,left)   -side left  -expand 1 -fill both
+  pack $glob(win,right)  -side right -expand 1 -fill both
+  pack $glob(win,middle) -side top   -expand 1 -fill y
+  pack propagate .fupper 0
+  pack forget $glob(win,bottom)
+}
+
+
+proc FontDialog { } {
+  global glob config
+
+  set w .font_dialog
+  toplevel $w -class Dialog
+  wm title $w "Font Chooser"
+  wm iconname $w "Font Chooser"
+  wm resizable $w true true
+  wm transient $w [winfo toplevel [winfo parent $w]]
+
+  frame $w.top
+  frame $w.bot
+  scrollbar $w.top.scrollvert -command "$w.top.list yview" -orient vertical 
+  scrollbar $w.top.scrollhoriz -command "$w.top.list xview" -orient horizontal 
+  listbox $w.top.list \
+    -yscrollcommand "$w.top.scrollvert set" \
+    -xscrollcommand "$w.top.scrollhoriz set" \
+    -font $config(gui,font) \
+    -background $config(gui,color_bg) -foreground $config(gui,color_fg) \
+    -selectbackground $config(gui,color_select_bg) -selectforeground $config(gui,color_select_fg) \
+    -width 70 \
+    -height 30 
+  button $w.bot.ok -text OK -command "FontDialogOK $w; destroy $w"
+  button $w.bot.cancel -text Cancel -command "set glob(font_dialog_return) {}; destroy $w"
+  label $w.top.example -text "AaBbCcDdEeFfGgHhIiJjKk 0123456789" -bg White -fg Black
+
+  set r [catch {exec xlsfonts} glob(font_dialog,fl)]
+  if {$r} {
+    PopError "Can't get fontlist from server ($glob(font_dialog,fl))"
+    destroy $w
+    return ""
+  }
+
+  $w.top.list delete 0 end
+  set glob(font_dialog,fl) [split $glob(font_dialog,fl) "\n"]
+  eval $w.top.list insert end $glob(font_dialog,fl)
+
+  pack $w.top -side top -expand 1 -fill both
+  pack $w.top.example -side bottom -fill x
+  pack $w.top.scrollvert -side right -fill y
+  pack $w.top.scrollhoriz -side bottom -fill x
+  pack $w.top.list -side top -expand 1 -fill both
+  pack $w.bot -side bottom
+  pack $w.bot.cancel -side right
+  pack $w.bot.ok -side right
+
+  set glob(font_dialog_return) {}
+
+  wm withdraw $w
+  update idletasks
+  set pw [winfo parent $w]
+  set x [expr [winfo width $pw]/2 - [winfo reqwidth $w]/2 \
+      + [winfo x $pw]]
+  set y [expr [winfo height $pw]/2 - [winfo reqheight $w]/2 \
+      + [winfo y $pw]]
+  wm geom $w +$x+$y
+  wm deiconify $w
+
+  bind $w.top.list <1> "
+    $w.top.example configure -font \"\[lindex \$glob(font_dialog,fl) \[$w.top.list nearest %y\]\]\"
+  "
+
+  set oldGrab [grab current $w]
+  frgrab $w
+  set oldena $glob(enableautoupdate)
+  set glob(enableautoupdate) 0
+  tkwait window $w
+  if {$oldGrab != ""} {
+    frgrab $oldGrab
+  }
+  set glob(enableautoupdate) $oldena
+  unset glob(font_dialog,fl)
+  return $glob(font_dialog_return)
+}
+
+proc FontDialogOK { w } {
+  global glob
+  set idx [$w.top.list curselection]
+  if {$idx != ""} {
+    set glob(font_dialog_return) "[lindex $glob(font_dialog,fl) $idx]"
+  }
+}
+
+proc EditFont { font } {
+  global config glob
+  set c $config(gui,$font)
+  set out [FontDialog]
+  if {$out == ""} return
+  set config(gui,$font) $out
+  ReConfigFont
+}
+
+
+proc EditColor { color } {
+  global config glob
+  set c $config(gui,$color)
+  if {$c == ""} {set c grey85}
+  set r [catch {exec $glob(lib_fr)/frcolor $c} out]
+  if {$r} {PopError $out}
+  if {$out == ""} return
+  set config(gui,$color) $out
+  ReConfigColors 
+}
+
+proc ReConfigFont {} {
+  global glob config
+  if {$config(gui,font_scheme) != "" && $config(gui,font_scheme) != $glob(gui,font_scheme)} {
+    catch {tk_setFont $config(gui,font_scheme)} out
+    set glob(gui,font_scheme) $config(gui,font_scheme)
+  }
+  if {$config(gui,font) != $glob(gui,font)} {
+    foreach k $glob(gui,color_xx,winlist) {
+      catch {$k configure -font $config(gui,font)}
+    }
+    set glob(gui,font) $config(gui,font)
+  }
+}
+
+# Produce a color suitable for active-backgrounds
+proc LighterColor { color } {
+  set color [winfo rgb . $color]
+  foreach i {0 1 2} {
+    set light($i) [expr [lindex $color $i]/256]
+    set inc1 [expr ($light($i)*15)/100]
+    set inc2 [expr (255-$light($i))/3]
+    if {$inc1 > $inc2} {
+      incr light($i) $inc1
+    } else {
+      incr light($i) $inc2
+    }
+    if {$light($i) > 255} {
+      set light($i) 255
+    }
+  }
+  return [format #%02x%02x%02x $light(0) $light(1) $light(2)]
+}
+
+proc ReConfigColors { } {
+  global glob config
+  if {$config(gui,color_scheme) != $glob(gui,color_scheme) || $config(gui,color_cursor) != $glob(gui,color_cursor)} {
+    catch {tk_setPalette background $config(gui,color_scheme) insertBackground $config(gui,color_cursor)} out
+    set glob(gui,color_scheme) $config(gui,color_scheme)
+    set glob(gui,color_cursor) $config(gui,color_cursor)
+  }
+  foreach c { color_bg color_fg color_select_bg color_select_fg } {
+    if {$config(gui,$c) != $glob(gui,$c)} {
+      foreach k $glob(gui,color_xx,winlist) {
+        switch $c {
+          color_bg { $k configure -bg $config(gui,$c) }
+          color_fg { $k configure -fg $config(gui,$c) }
+          color_select_fg { $k configure -selectforeground $config(gui,$c) }
+          color_select_bg { $k configure -selectbackground $config(gui,$c) }
+        }
+      }
+      set glob(gui,$c) $config(gui,$c)
+    }
+  }
+  if {$config(gui,color_cmd) != $glob(gui,color_cmd)} {
+    foreach k $glob(gui,color_cmd,winlist) {
+      $k tag configure command -background $config(gui,color_cmd)
+    }
+    set glob(gui,color_cmd) $config(gui,color_cmd)
+  }
+}
+
+proc FindDialog { result inst } {
+  global glob config
+
+  incr glob(toplevelidx)  
+  set w .toplevel_$glob(toplevelidx)
+  toplevel $w -class Dialog
+  wm title $w "Files Found"
+  wm iconname $w "Files Found"
+  wm resizable $w true true
+  wm transient $w [winfo toplevel [winfo parent $w]]
+
+  frame $w.top
+  frame $w.bot
+  scrollbar $w.top.scrollvert -command "$w.top.list yview" -orient vertical 
+  scrollbar $w.top.scrollhoriz -command "$w.top.list xview" -orient horizontal 
+  listbox $w.top.list \
+    -yscrollcommand "$w.top.scrollvert set" \
+    -xscrollcommand "$w.top.scrollhoriz set" \
+    -font $config(gui,font) \
+    -background $config(gui,color_bg) -foreground $config(gui,color_fg) \
+    -selectbackground $config(gui,color_select_bg) -selectforeground $config(gui,color_select_fg) \
+    -width 70 \
+    -height 30 
+
+  label $w.bot.text -text "Click on a file name to show it in the list panel."
+  button $w.bot.ok -text OK -command "destroy $w"
+
+  $w.top.list delete 0 end
+  eval $w.top.list insert end $result
+
+  pack $w.top -side top -expand 1 -fill both
+  pack $w.top.scrollvert -side right -fill y
+  pack $w.top.scrollhoriz -side bottom -fill x
+  pack $w.top.list -side top -expand 1 -fill both
+  pack $w.bot -side bottom -expand 1 -fill x
+  pack $w.bot.text -side top -pady 4
+  pack $w.bot.ok -side top
+
+  wm withdraw $w
+  update idletasks
+  set pw [winfo parent $w]
+  set x [expr [winfo width $pw]/2 - [winfo reqwidth $w]/2 \
+      + [winfo x $pw]]
+  set y [expr [winfo height $pw]/2 - [winfo reqheight $w]/2 \
+      + [winfo y $pw]]
+  wm geom $w +$x+$y
+  wm deiconify $w
+
+  bind $w.top.list <1> "
+    GotoFind \[lindex \{$result\} \[$w.top.list nearest %y\]\] $inst $glob($inst,pwd);break
+  "
+  bind $w.top.list <B1-Motion> "break"
+}
+
+proc GotoFind { file inst dir } {
+  global glob
+  NewPwd $inst $dir/[file dirname $file]
+  UpdateWindow $inst
+  set j 0
+  foreach i $glob($inst,filelist) {
+    set name [lindex $i 1]
+    if {$name == [file tail $file]} {
+      $glob(win,$inst).frame_listb.listbox1 selection clear 0 end
+      $glob(win,$inst).frame_listb.listbox1 selection set $j
+      $glob(win,$inst).frame_listb.listbox1 see $j
+      return
+    }
+    incr j
+  }
+  PopError "File $dir/$file can not be found"
+}
+
+proc Clone {} {
+  global glob argv argv0
+  Try { cd $glob(start_path); exec $argv0 $glob(left,pwd) $glob(right,pwd) & } "" 1 
+}
+
+proc ToggleCmdWin { inst } {
+  global glob config
+  if {$glob($inst,shell,packed)} {
+    pack forget $glob(win,bottom).fcmdwin$inst
+    if {!$glob([Opposite $inst],shell,packed)} {
+      pack forget $glob(win,bottom)
+    }
+    set glob($inst,shell,packed) 0
+    set glob($inst,shell,history,flipping) 0
+  } else {
+    if {!$glob([Opposite $inst],shell,packed)} {
+      pack $glob(win,bottom) -side bottom -fill x
+    }
+    $glob(win,bottom).fcmdwin$inst.text configure -height $config(shell,height,$inst)
+    set glob($inst,shell,maxed) 0
+    pack $glob(win,bottom).fcmdwin$inst -side bottom -fill x
+    set glob($inst,shell,packed) 1
+  }
+}
+
+proc MaxWin { w inst } {
+  global glob config
+  if {$glob($inst,shell,maxed)} {
+    $glob(win,bottom).fcmdwin$inst.text configure -height $config(shell,height,$inst)
+    set glob($inst,shell,maxed) 0
+  } else {
+    $glob(win,bottom).fcmdwin$inst.text configure -height 2000
+    set glob($inst,shell,maxed) 1
+  }
+}
+
+proc BuildCmdWindow { inst } {
+  global glob config
+
+  frame $glob(win,bottom).fcmdwin$inst
+  set w $glob(win,bottom).fcmdwin$inst
+
+  text $w.text -yscrollcommand "$w.fr.scroll set" -height $config(shell,height,$inst) -font $config(gui,font) -background $config(gui,color_bg) -foreground $config(gui,color_fg) -selectbackground $config(gui,color_select_bg) -selectforeground $config(gui,color_select_fg)
+  lappend glob(gui,color_xx,winlist) $w.text
+  frame $w.fr 
+  scrollbar $w.fr.scroll -command "$w.text yview" 
+  frame $w.bot 
+  entry $w.bot.entry  -font $config(gui,font) -background $config(gui,color_bg) \
+      -foreground $config(gui,color_fg) -selectbackground $config(gui,color_select_bg) -selectforeground $config(gui,color_select_fg)  
+  lappend glob(gui,color_xx,winlist) $w.bot.entry
+  $w.text tag configure command -background $config(gui,color_cmd)
+  lappend glob(gui,color_cmd,winlist) $w.text
+  $w.text tag configure complete -background $config(gui,color_select_bg) -foreground $config(gui,color_select_fg)
+  label $w.bot.label -textvariable glob($inst,pwd) -font $config(gui,font)  -padx 5
+  set ::GImgArr(max) [image create photo -file $glob(lib_fr)/bitmaps/max.ppm]
+  set ::GImgArr(smaller) [image create photo -file $glob(lib_fr)/bitmaps/smaller.ppm]
+  button $w.bot.max -image $::GImgArr(max) -command "MaxWin $w $inst" 
+  button $w.bot.smaller -image $::GImgArr(smaller) -command "
+               incr config(shell,height,$inst) -2
+               if \"\$config(shell,height,$inst)<1\" \"
+                 set config(shell,height,$inst) 1
+               \"
+               $w.text configure -height \$config(shell,height,$inst)
+             " 
+  set ::GImgArr(larger) [image create photo -file $glob(lib_fr)/bitmaps/larger.ppm]
+  button $w.bot.larger -image $::GImgArr(larger) \
+    -command "incr config(shell,height,$inst) 2; $w.text configure -height \$config(shell,height,$inst)" 
+  label  $w.bot.running -text R
+  pack $w.fr.scroll -side bottom -fill y -expand 1
+  pack $w.fr -side $inst -fill y
+  pack $w.bot.label -side left 
+  pack $w.bot.max -side right -fill y
+  pack $w.bot.larger -side right -fill y
+  pack $w.bot.smaller -side right -fill y
+  pack $w.bot.running -side right -fill y
+  pack $w.bot.entry -side bottom -fill x
+  pack $w.bot -side bottom -fill x
+  pack $w.text -expand 1 -fill both
+  menu $w.text.p
+  $w.text.p add command -label Search... -command "SearchView $w.text 0"
+  $w.text.p add command -label {Search Again} -command "SearchView $w.text 1"
+  $w.text.p add command -label {Save As...} -command "SaveToFile $w.text {} 1"
+  bind $w.bot.entry <Return> "ExecCmdInWin $inst $w; catch \"focus $w.bot.entry\" out; break"
+  bind $w.bot.entry <KP_Enter> "ExecCmdInWin $inst $w;catch \"focus $w.bot.entry\" out; break"
+  bind $w.bot.entry <Tab> "Complete $inst $w;break"
+  bind $w.bot.entry <Control-d> "CompleteShow $inst $w"
+  bind $w.bot.entry <Control-p> "FlipShellHistory $w.bot.entry $inst searchback"
+  bind $w.bot.entry <Control-c> "$w.bot.entry delete 0 end"
+  bind $w.bot.entry <Up> "FlipShellHistory $w.bot.entry $inst up"
+  bind $w.bot.entry <Down> "FlipShellHistory $w.bot.entry $inst down"
+  bind $w.bot.entry <Enter> "focus $w.bot.entry"
+  bind $w.bot.entry <Leave> "focus ."
+  bind $w.text <3> "tk_popup $w.text.p %X %Y"
+  bind $w.text <Enter> "focus $w.bot.entry"
+  bind $w.text <Leave> "focus ."
+  bind $w.text <FocusIn> "focus $w.bot.entry"
+}
+
+proc CompleteShow { inst w } {
+  set cmd [$w.bot.entry get]
+  set insidx [expr [$w.bot.entry index insert] - 1]
+  set wstart [string wordstart [FixCompleteString $cmd] $insidx]
+  set wend [string wordend [FixCompleteString $cmd] $insidx]
+  set word [string trim [string range $cmd $wstart $insidx]]
+  if {$word == ""} return
+  if {$wstart == 0} { set is_verb 1 } else { set is_verb 0 }
+  set l [FilenameComplete $word $is_verb $inst]
+  $w.text insert end "\n$l"
+  $w.text tag add complete "insert - 1 lines + 1 chars" "insert"
+  $w.text see insert
+}
+
+proc FixCompleteString { cmd } {
+  set l ""
+  set len [string length $cmd]
+  for {set i 0} {$i < $len} {incr i} {
+    set c [string index $cmd $i]
+    if {$c != " "} {
+      set l "${l}x"
+    } else {
+      set l "${l}$c"
+    }
+  }
+  return $l
+}
+
+proc Complete { inst w } {
+  global glob
+  if {!$glob($inst,shell,complete,flipping)} {
+    set glob($inst,shell,complete,index) 0
+    set cmd [$w.bot.entry get]
+    set insidx [expr [$w.bot.entry index insert] - 1]
+    set wstart [string wordstart [FixCompleteString $cmd] $insidx]
+    set wend [string wordend [FixCompleteString $cmd] $insidx]
+    set word [string trim [string range $cmd $wstart $insidx]]
+    if {$word == ""} return
+    if {$wstart == 0} { set is_verb 1 } else { set is_verb 0 }
+    set glob($inst,shell,complete,list) [FilenameComplete $word $is_verb $inst]
+    set repl [lindex $glob($inst,shell,complete,list) $glob($inst,shell,complete,index)]
+    incr glob($inst,shell,complete,index)
+    if {$repl == ""} return
+    set head [string range $cmd 0 [expr $wstart-1]]
+    set tail [string range $cmd $wend end]
+    set newcmd "$head$repl$tail"
+    $w.bot.entry delete 0 end
+    $w.bot.entry insert end $newcmd
+    $w.bot.entry icursor [string wordend [FixCompleteString $newcmd] $insidx]
+    set glob($inst,shell,complete,flipping) 1
+  } else {
+    if {[$w.bot.entry get] != $glob($inst,shell,complete,newcmd) && $glob($inst,shell,complete,newidx) != [$w.bot.entry index insert]} {
+      set glob($inst,shell,complete,flipping) 0
+      Complete $inst $w
+      return
+    }
+    set cmd $glob($inst,shell,complete,cmd)
+    $w.bot.entry delete 0 end
+    $w.bot.entry insert end $cmd
+    set word $glob($inst,shell,complete,word) 
+    set wstart $glob($inst,shell,complete,wstart)
+    set wend $glob($inst,shell,complete,wend)
+    set insidx $glob($inst,shell,complete,insidx)
+    set repl [lindex $glob($inst,shell,complete,list) $glob($inst,shell,complete,index)]
+    incr glob($inst,shell,complete,index)
+    if {$repl == ""} { 
+      $w.bot.entry icursor [string wordend [FixCompleteString $cmd] $insidx]
+      set glob($inst,shell,complete,flipping) 0
+      return
+    }
+    set head [string range $cmd 0 [expr $wstart-1]]
+    set tail [string range $cmd $wend end]
+    set newcmd "$head$repl$tail"
+    $w.bot.entry delete 0 end
+    $w.bot.entry insert end $newcmd
+    $w.bot.entry icursor [string wordend [FixCompleteString $newcmd] $insidx]
+  }
+  set glob($inst,shell,complete,cmd) $cmd
+  set glob($inst,shell,complete,word) $word
+  set glob($inst,shell,complete,wstart) $wstart
+  set glob($inst,shell,complete,wend) $wend
+  set glob($inst,shell,complete,insidx) $insidx
+  set glob($inst,shell,complete,newidx) [$w.bot.entry index insert]
+  set glob($inst,shell,complete,newcmd) $newcmd
+}
+
+proc FilenameComplete { word is_verb inst } {
+  global glob config env
+  set candidates {}
+  if {$is_verb && [string index $word 0] != "/"} {
+    foreach k [split $env(PATH) :] {
+      set c [glob -nocomplain $k/${word}*]
+      if {$c != ""} {
+        set candidates [concat $candidates $c]
+      }
+    }
+  } else {
+    set r [catch {cd $glob($inst,pwd)} out]
+    if {$r} {
+      PopError "$out"
+      return ""
+    }
+    set r [catch {glob -nocomplain ${word}*} c]
+    if {!$r && $c != ""} {
+      set candidates [concat $candidates $c]
+    }
+  }
+  return $candidates
+}
+
+proc ExecCmdInWin { inst w } {
+  global glob config env
+  set glob($inst,shell,history,flipping) 0
+  set glob($inst,shell,complete,flipping) 0
+  set cmd [string trim [$w.bot.entry get]]
+  if {$cmd == ""} return
+  $w.bot.entry delete 0 end
+  $w.text mark set insert end
+  $w.text see insert
+  set verb [lindex $cmd 0]
+  if {[IsFTP $glob($inst,pwd)]} {
+    PopError "Sorry, can't execute commands in ftp directories"
+    return
+  }
+
+  set r [catch {cd $glob($inst,pwd)} out]
+  if {$r} {
+    PopError "$out"
+    return
+  }
+
+  # expand aliases
+  set alias ""
+  foreach k $config(shell,aliases) {
+    if {$verb == [lindex $k 0]} {
+      set alias [lindex $k 1]
+      break
+    }
+  }
+  if {$alias != ""} {
+    set cmd [concat $alias [lrange $cmd 1 end]]
+    set verb [lindex $cmd 0]
+  }
+
+  $w.text insert end "\n$glob($inst,pwd) > $cmd\n"
+  $w.text tag add command "insert - 1 lines" "insert - 1 chars"
+  $w.text see "insert - 1 chars"
+  update
+
+  if {[string match *& $cmd]} {
+    catch {eval exec $cmd} out
+    $w.text insert end $out
+  } else {
+  switch -glob $verb { 
+    %* {
+        # Tcl commands
+        set r [catch { eval [string range $cmd 1 end] } out]
+        if {$r} {
+          $w.text insert end "tcl error: $out"
+        } else {
+          $w.text insert end "$out"
+        }
+      }
+    cd {
+        # this code is a little extra fluffy, because we want to avoid the error handling in NewPwd/UpdateWindow
+        # which we could have used also, but it doesn't look as neat. (It pops up an error popup...)
+        set newpwd [lindex $cmd 1]
+        if {$newpwd == ""} {set newpwd $env(HOME)}
+        set r [catch {cd $newpwd} out]
+        if {!$r} {
+          set r [catch {cd $glob($inst,pwd)} out]
+          NewPwd $inst $newpwd
+          UpdateWindow $inst
+          $w.text insert end "ok"
+        } else {
+          $w.text insert end "cd error: $out"
+        }
+      }
+    view {
+        ViewAny [lrange $cmd 1 end]
+      }
+    history {
+        $w.text insert end "$glob($inst,shell,history)"
+      }
+    default {
+        incr glob($inst,shellcount)
+        if {$glob($inst,shellcount) == 1} {
+          set glob($inst,runlabel,bg) [$w.bot.running cget -bg]
+          $w.bot.running configure -bg red
+          update idletasks
+        }
+        set r [catch {open "|$config(cmd,sh) -c \{$cmd 2>&1\}" r} fid]
+        if {$r} {
+          $w.text insert end "Exec error: $fid\n"
+        } else {
+          fconfigure $fid -buffering none
+          fconfigure $fid -blocking 0
+          fconfigure $fid -translation binary
+          # give command time to do something before we read it's output
+          after [ReadDelay 0]
+          set i 0
+          while {1} {
+            incr i
+            set out [read $fid]
+            if {$out != ""} {
+              $w.text insert end "$out"
+            }
+            if {[eof $fid]} {
+              if {[$w.text get "end - 1 chars"] == "\n"} {
+                $w.text delete "end - 1 chars"
+              }
+              break
+            }
+            if {$out != ""} {
+              $w.text see insert
+            }
+            after [ReadDelay $i]
+            update
+          }
+          catch {close $fid}
+        }
+        incr glob($inst,shellcount) -1
+        if {$glob($inst,shellcount) == 0} {
+          $w.bot.running configure -bg $glob($inst,runlabel,bg)
+        }
+      }
+    }
+  }
+  $w.text see insert
+  set size_text [file rootname [$w.text index end]]
+  if {$size_text > [expr ($config(shell,buffer) * 4) / 3]} {
+    $w.text delete 0.1 [expr ${size_text} - $config(shell,buffer)].1
+  }
+  lappend glob($inst,shell,history) $cmd
+  set len [llength $glob($inst,shell,history)]
+  if {$len > 250} {
+    set glob($inst,shell,history) [lrange [expr $len - 200] end]
+  }
+  LogStatusOnly "Shell: \"$cmd\" - done"
+}
+
+proc ReadDelay { i } {
+  #puts -nonewline "@"
+  flush stdout
+  set len [expr 200 + ($i * 50)]
+  if {$len > 1000} {set len 1000}
+  return $len
+}
+
+
+proc FlipShellHistory { w inst direction } {
+  global glob
+  switch $direction {
+    up {
+        if {!$glob($inst,shell,history,flipping)} {
+          set glob($inst,shell,history,flipping,index) [expr [llength $glob($inst,shell,history)] - 1]
+          set glob($inst,shell,history,flipping) 1
+        } else {
+          incr glob($inst,shell,history,flipping,index) -1
+          if {$glob($inst,shell,history,flipping,index) < -1} {set glob($inst,shell,history,flipping,index) -1}
+        }
+      }
+    down {
+        if {!$glob($inst,shell,history,flipping)} {
+          set glob($inst,shell,history,flipping,index) 0
+          set glob($inst,shell,history,flipping) 1
+        } else {
+          incr glob($inst,shell,history,flipping,index) 1
+          set len [llength $glob($inst,shell,history)]
+          if {$glob($inst,shell,history,flipping,index) > $len} {set glob($inst,shell,history,flipping,index) [expr $len]}
+        }
+      }
+    searchback {
+        if {!$glob($inst,shell,history,flipping)} {
+          set start [expr [llength $glob($inst,shell,history)] - 1]
+          set cmd [string trim [$w get]]
+          set glob($inst,shell,history,flipping,cmd) $cmd
+        } else {
+          set start [expr $glob($inst,shell,history,flipping,index) -1]
+          if {$start < -1} {set start -1}
+          set cmd $glob($inst,shell,history,flipping,cmd)
+        }
+        #puts "$cmd $start"
+        for {set i $start} {$i >= 0} {incr i -1} {
+          if {$cmd == [string range [lindex $glob($inst,shell,history) $i] 0 [expr [string length $cmd] -1]]} {
+            set glob($inst,shell,history,flipping,index) $i
+            set glob($inst,shell,history,flipping) 1
+            break
+          }
+        }
+        if {!$glob($inst,shell,history,flipping)} return
+      }
+  }
+  $w delete 0 end
+  $w insert end [lindex $glob($inst,shell,history) $glob($inst,shell,history,flipping,index)]
+}
+
+
+proc CheckGrab { r reason } {
+  if {$r} {
+    LogStatusOnly "$reason (non fatal)"
+  }
+}
+
+# This routine is for commands that don't want the autoupdater to run
+# and invoke "update" during operation
+proc DoProtCmd { cmd } {
+  global glob 
+  set glob(focus_before_doprotcmd) [focus]
+  focus .status
+  frgrab $glob(win,$glob(active)).top.bar3
+#  frgrab $glob(win,$inst).top.bar3
+  set oldcur [. cget -cursor]
+  set oldena $glob(enableautoupdate)
+  . config -cursor circle
+  #wm iconname . "FileRunner v$glob(version) - busy"
+  update idletasks
+  set glob(enableautoupdate) 0
+  set glob(abortcmd) 0
+  uplevel $cmd
+  set glob(enableautoupdate) $oldena
+  . config -cursor $oldcur
+  #wm iconname . "FileRunner v$glob(version)"
+  catch {grab release [grab current]}
+  #catch {focus $glob(focus_before_doprotcmd)}
+  focus .status 
+}
+
+# This routine is for commands that don't want the autoupdater to run
+# but do not invoke "update" during operation
+proc DoProtCmd_NoGrab { cmd } {
+  global glob 
+  set oldcur [. cget -cursor]
+  set oldena $glob(enableautoupdate)
+  . config -cursor circle
+  #wm iconname . "FileRunner v$glob(version) - busy"
+  update idletasks
+  set glob(enableautoupdate) 0
+  set glob(abortcmd) 0
+  uplevel $cmd
+  set glob(enableautoupdate) $oldena
+  . config -cursor $oldcur
+  #wm iconname . "FileRunner v$glob(version)"
+}
+
+proc SetStartDir { inst } {
+  global glob config
+  set config(startpwd,$inst) $glob($inst,pwd)
+  LogStatusOnly "config(startpwd,$inst) set. Do \"Configuration->Save configuration\" if you want to store it to the .fr file"
+  #SaveConfig
+}
+
+proc SetWinPos {} {
+  global glob config
+  set config(geometry,main) [wm geometry .]
+  LogStatusOnly "config(geometry,main) set. Do \"Configuration->Save configuration\" if you want to store it to the .fr file"
+}
+
+
+proc About {} {
+  global glob
+  set button [tk_dialog_about .apop "About FileRunner" "FileRunner version $glob(version)
+
+Copyright (C) 1996-1999 Henrik Harmsen
+
+FileRunner is Free Software distributed under the 
+GNU General Public License. FileRunner comes with 
+ABSOLUTELY NO WARRANTY. 
+See menu Help/Copying for further details.
+" "" 0 "OK"]
+}
+
+proc ForceUpdate {} {
+  global glob
+  set glob(forceupdate) 1
+  UpdateWindow both
+  set glob(forceupdate) 0
+}
+
+proc BuildFileListPanel { inst } {
+  global glob config
+  frame $glob(win,$inst)  
+  frame $glob(win,$inst).top  
+  frame $glob(win,$inst).frame_listb
+  frame $glob(win,$inst).top.bar1 -padx 2
+  frame $glob(win,$inst).top.bar2 -padx 2
+  frame $glob(win,$inst).top.bar3 -padx 2
+  set ::GImgArr(tree) [image create photo -file $glob(lib_fr)/bitmaps/tree2.ppm]
+  menubutton $glob(win,$inst).top.bar1.button_dir -menu $glob(win,$inst).top.bar1.button_dir.m -image $::GImgArr(tree)
+  menu $glob(win,$inst).top.bar1.button_dir.m -tearoff false -postcommand  "eval CdMenuCreate ${inst} \[Esc \$glob($inst,pwd) \] $glob(win,$inst).top.bar1.button_dir.m 1; update idletasks"
+  # Create buttons
+  set ::GImgArr(up) [image create photo -file $glob(lib_fr)/bitmaps/up.ppm]
+  button $glob(win,$inst).top.bar1.button_parentdir -image $::GImgArr(up) -command [ list DoProtCmd "NewPwd $inst \"\$glob(${inst},pwd)/..\" ; UpdateWindow $inst" ]
+#  button $glob(win,$inst).top.bar1.button_parentdir -image $::GImgArr(up) -command "DoProtCmd \"NewPwd $inst \"\$glob(${inst},pwd)/..\"; UpdateWindow $inst\"
+  set ::GImgArr(left) [image create photo -file $glob(lib_fr)/bitmaps/left.ppm]
+  button $glob(win,$inst).top.bar1.button_back  -image $::GImgArr(left) -command "DoProtCmd \"Back ${inst}\"" -width 22
+  set ::GImgArr(update) [image create photo -file $glob(lib_fr)/bitmaps/update.ppm]
+  button $glob(win,$inst).top.bar1.button_update  -image $::GImgArr(update) -command "DoProtCmd \"set glob(forceupdate) 1; FTP_InvalidateCache; UpdateWindow $inst; set glob(forceupdate) 0\""
+  set ::GImgArr(xterm) [image create photo -file $glob(lib_fr)/bitmaps/xterm.ppm]
+  button $glob(win,$inst).top.bar2.button_xterm  -image $::GImgArr(xterm) -command "Try \"StartTerm \$glob(${inst},pwd) $inst\" {} 1"
+  set ::GImgArr(tkshell) [image create photo -file $glob(lib_fr)/bitmaps/tkshell.ppm]
+  button $glob(win,$inst).top.bar2.button_tkshell -image $::GImgArr(tkshell) -text "Tk Shell" -command "Try \"StartConsole \$glob(${inst},pwd) $inst\" {} 1"
+  set ::GImgArr(frterm) [image create photo -file $glob(lib_fr)/bitmaps/frterm.ppm]
+  button $glob(win,$inst).top.bar2.button_frterm  -image $::GImgArr(frterm) -command "ToggleCmdWin $inst"
+  button $glob(win,$inst).top.bar3.abort  -text Stop -command { set glob(abortcmd) 1 }
+  button $glob(win,$inst).top.bar3.clone  -text Clone -command Clone
+  entry $glob(win,$inst).entry_dir -font $config(gui,font) -selectbackground $config(gui,color_select_bg) -selectforeground $config(gui,color_select_fg) -background $config(gui,color_bg) -foreground $config(gui,color_fg)
+  lappend glob(gui,color_xx,winlist) $glob(win,$inst).entry_dir
+  # Create listbox
+  frame $glob(win,$inst).frame_listb.right 
+  scrollbar $glob(win,$inst).frame_listb.scroll_horiz -command "$glob(win,$inst).frame_listb.listbox1 xview" -orient {horizontal}
+  scrollbar $glob(win,$inst).frame_listb.right.scroll_vert -command "$glob(win,$inst).frame_listb.listbox1 yview"
+  listbox $glob(win,$inst).frame_listb.listbox1 \
+    -xscrollcommand "$glob(win,$inst).frame_listb.scroll_horiz set" \
+    -yscrollcommand "$glob(win,$inst).frame_listb.right.scroll_vert set" \
+    -selectmode extended \
+    -font $config(gui,font) \
+    -background $config(gui,color_bg) -foreground $config(gui,color_fg) \
+    -selectbackground $config(gui,color_select_bg) -selectforeground $config(gui,color_select_fg)
+  lappend glob(gui,color_xx,winlist) $glob(win,$inst).frame_listb.listbox1
+  lappend glob(gui,tablist) $glob(win,$inst).frame_listb.listbox1
+  bind $glob(win,$inst).frame_listb.listbox1 <Tab> {TabBind $glob(gui,tablist);break}
+  bind $glob(win,$inst).frame_listb.listbox1 $config(mwheel,neg) "$glob(win,$inst).frame_listb.listbox1 yview scroll -$config(mwheel,delta) units"
+  bind $glob(win,$inst).frame_listb.listbox1 $config(mwheel,pos) "$glob(win,$inst).frame_listb.listbox1 yview scroll $config(mwheel,delta) units"
+  selection handle $glob(win,$inst).frame_listb.listbox1 GetFileListBoxSTRING_Selection STRING
+  label $glob(win,$inst).panestat -text "" -justify center
+  pack $glob(win,$inst).frame_listb.right -side right -fill y
+  pack $glob(win,$inst).frame_listb.right.scroll_vert -side top -fill y -expand 1
+  pack [ label $glob(win,$inst).frame_listb.right.filler -relief flat ] -side bottom -fill both
+  pack $glob(win,$inst).frame_listb.listbox1 -side top -expand 1 -fill both
+  pack $glob(win,$inst).frame_listb.scroll_horiz -side bottom -fill x
+  pack $glob(win,$inst).top -side top -fill x
+  pack $glob(win,$inst).top.bar1 -side left -fill both
+  pack $glob(win,$inst).top.bar1.button_back -side left -fill both
+  pack $glob(win,$inst).top.bar1.button_parentdir -side left -fill both
+  pack $glob(win,$inst).top.bar1.button_update -side left -fill both
+  pack $glob(win,$inst).top.bar1.button_dir -side left -fill both
+  pack $glob(win,$inst).top.bar2 -side left -fill both
+  pack $glob(win,$inst).top.bar2.button_xterm -side right -fill both
+  pack $glob(win,$inst).top.bar2.button_tkshell -side right -fill both
+  pack $glob(win,$inst).top.bar2.button_frterm -side right -fill both
+  pack $glob(win,$inst).top.bar3 -side left -fill both
+  pack $glob(win,$inst).top.bar3.clone $glob(win,$inst).top.bar3.abort -side left
+  pack $glob(win,$inst).entry_dir -side top -fill x
+  pack $glob(win,$inst).panestat -side top -fill both
+  pack $glob(win,$inst).frame_listb -side top -fill both -expand 1
+}
+
+proc GetFileListBoxSTRING_Selection {offset maxBytes } {
+  global glob
+  set l {}
+  foreach inst {left right} {
+    foreach sel [$glob(win,$inst).frame_listb.listbox1 curselection] {
+      set l "$l $glob($inst,pwd)/[lindex [lindex $glob($inst,filelist) $sel] 1]"
+    }
+  }
+  return [string range $l 1 $maxBytes]
+}
+
+
+
+proc GetDirList { directory } {
+  global config glob
+
+  set dl {}
+
+  if { [IsFTP $directory] } {
+    set mode ftp
+    regexp {ftp://([^/]*)(.*)} $directory match ftpI directory
+  } else {
+    set mode normal
+  }
+
+  if { $mode == "ftp" } {
+    set dummy {{0 {Can't get file list, try again?} n 0 0 0 0 0}}
+    set r [catch {FTP_CD $ftpI $directory} outp]
+    if {$r != 0} {
+      PopError $outp
+      return $dummy
+    }
+    set r [catch {FTP_List $ftpI $config(fileshow,all)} dirlist]
+    if {$r != 0} {
+      PopError $dirlist
+      return $dummy
+    }
+
+# Example of output (now placed in outp)
+#total 3333 (optional)
+#drwxrwxr-x   8 root     wheel        1024 Mar 16 14:28 .
+#drwxrwxr-x   8 root     wheel        1024 Mar 16 14:28 ..
+#lrwxrwxrwx   1 root     root           11 Mar 16 14:28 apa -> welcome.msg
+#drwxrwxr-x   2 root     wheel        1024 Dec  3  1993 bin
+#drwxrwxr-x   2 root     wheel        1024 Aug 30  1993 etc
+#drwxrwxr-x   2 root     wheel        1024 Dec  3  1993 incoming
+#drwxrwxr-x   2 root     wheel        1024 Nov 17  1993 lib
+#drwxrwxr-x   3 root     wheel        1024 Mar 10 16:08 pub
+#drwxrwxr-x   3 root     wheel        1024 Aug 30  1993 usr
+#-rw-r--r--   1 root     root          312 Aug  1  1994 welcome.msg
+
+#wuarchive.wustl.edu:
+#-rw-r--r--   1 0                      605 Sep 27 14:45 README.NFS
+#-rw-r--r--   1 0                      474 Sep 27 14:45 README.SIMTEL
+#lrwxrwxrwx   1 0                        9 Sep 26 12:56 bin -> ./usr/bin
+
+#ftp://reactor.actlab.com (Yucky WinNT output)
+#12-02-97  02:17AM       <DIR>          !Incoming
+#06-03-97  09:38PM       <DIR>          !support
+#06-03-97  09:38PM       <DIR>          7thlevel
+#06-03-97  09:38PM       <DIR>          access
+#06-03-97  09:38PM       <DIR>          accolade
+#06-03-97  09:39PM       <DIR>          Activision
+#09-11-96  07:10PM                 3592 ACTlogo.gif
+#06-03-97  09:40PM       <DIR>          Apogee
+#06-03-97  09:40PM       <DIR>          avalon
+#06-03-97  09:40PM       <DIR>          beam
+
+    set dosorttest 1
+
+    switch -exact $config(fileshow,sort) {
+      nameonly {
+        set sortval_n  1
+        set sortval_d  1
+        set sortval_l  1
+        set sortval_ld 1
+        set dosorttest 0
+      } 
+      dirsfirst {
+        set sortval_n  2
+        set sortval_d  1
+        set sortval_l  2
+        set sortval_ld 1
+        set dosorttest 0
+      }
+      dirslast {
+        set sortval_n  1
+        set sortval_d  2
+        set sortval_l  1
+        set sortval_ld 2
+        set dosorttest 0
+      }
+    }
+
+
+    foreach k $dirlist {
+      if { $k == "" } continue
+      if { [string range $k 0 4] == "total" } continue
+
+      set filetype fn
+
+      # Try regular parsing
+      set r [regexp {^([^ ])([^ ]+) *[0-9]+ +([^ ]+) +([^ ]+) +([0-9]+) +(............) (((.+) -> (.+))|(.+))} \
+                 $k match type flags owner group size date i1 i2 i3 i4]
+
+      if {!$r} {
+        # Try wuarchive.wustl.edu parsing
+        set r [regexp {^([^ ])([^ ]+) *[0-9]+ +([^ ]+) +([0-9]+) +(............) (((.+) -> (.+))|(.+))} \
+                 $k match type flags owner       size date i1 i2 i3 i4]
+        if {!$r} {
+          # Try WinNT parsing
+          set r [regexp {(.................)(......................)(.+)} \
+              $k match date type i1]
+          if {!$r} {
+            PopError "Error parsing ftp LIST output: $k"
+            return $dummy
+          }
+          set i3 {}
+          set type [string trim $type]
+          set flags rwxrwxrwx
+          set owner 0
+          set group 0
+          if {$type == "<DIR>"} {
+            set size 0
+            set type d
+          } else {
+            set size $type
+            set type n
+          }
+        }
+        set group 0
+      }
+
+      if {"$i3" != ""} {
+        set file [string trimright $i3 "\n"]
+        set link [string trimright $i4 "\n"]
+      } else {
+        set file [string trimright $i1 "\n"]
+      }
+
+      if {"$file" == "." || "$file" == ".."} continue
+      if {$type == "-"} { set type n}
+      switch -exact $type {
+        d  { set filetype fd }
+        l  { if { $config(ftp,fastlink) == 1 } {
+               set r [catch {FTP_IsDir $ftpI "$directory/$file"} outp]
+               if { $r != 0 } { PopError "Fatal error: $outp"; CleanUp 1 }
+               if {!$outp} {
+                 set filetype fl
+               } else {
+                 set filetype fld
+               }
+             } else {
+               set filetype fld
+             }
+           }
+        s  -
+        p  -
+        n  { set filetype fn }
+        default { PopError "Error parsing ftp LIST output: $k"; return $dummy }
+      }
+      set sec [FTPDateStringToSeconds $date]
+      if {$dosorttest} {
+        switch -exact $config(fileshow,sort) {
+          time {
+            set tmp [format "%011d" $sec]
+            set sortval_n  $tmp
+            set sortval_d  $tmp
+            set sortval_l  $tmp
+            set sortval_ld $tmp
+          }
+          rtime {
+            set tmp [format "%011d" [expr 2147483647 - $sec]]
+            set sortval_n  $tmp
+            set sortval_d  $tmp
+            set sortval_l  $tmp
+            set sortval_ld $tmp
+          }
+          size {
+            set tmp [format "%011d" $size]
+            set sortval_n  $tmp
+            set sortval_d  $tmp
+            set sortval_l  $tmp
+            set sortval_ld $tmp
+          }
+          extension {
+            set tmp [file extension $file]$file
+            set sortval_n  $tmp
+            set sortval_d  $tmp
+            set sortval_l  $tmp
+            set sortval_ld $tmp
+          }
+        }
+      }
+                            
+      switch -exact $filetype {
+        fn  {lappend dl [list $sortval_n  $file fn  $size $sec $flags $owner $group]}
+        fd  {lappend dl [list $sortval_d  $file fd  $size $sec $flags $owner $group]}
+        fl  {lappend dl [list $sortval_l  $file fl  $size $sec $flags $owner $group $link]}
+        fld {lappend dl [list $sortval_ld $file fld $size $sec $flags $owner $group $link]}
+      }
+    }
+    return [lsort $dl]
+  }
+
+  cd $directory
+  set noperm 0
+  if {$config(fileshow,all)} {
+    set r [catch {glob -nocomplain .* *} dirlist]
+  } else {
+    set r [catch {glob -nocomplain *} dirlist]
+  }
+  if {$r} {
+    set noperm 1
+    set dirlist {}
+  }
+
+  set dosorttest 1
+
+  switch -exact $config(fileshow,sort) {
+    nameonly {
+      set sortval_n  1
+      set sortval_d  1
+      set sortval_l  1
+      set sortval_ld 1
+      set dosorttest 0
+    } 
+    dirsfirst {
+      set sortval_n  2
+      set sortval_d  1
+      set sortval_l  2
+      set sortval_ld 1
+      set dosorttest 0
+    }
+    dirslast {
+      set sortval_n  1
+      set sortval_d  2
+      set sortval_l  1
+      set sortval_ld 2
+      set dosorttest 0
+    }
+  }
+
+  foreach k $dirlist {
+    if {[catch { file lstat "$k" statinfo }]} continue
+
+    set filetype n
+
+    if {($statinfo(mode) & 0170000) == 040000} {
+      set filetype d
+    }
+
+    if {($statinfo(mode) & 0170000) == 0120000} {
+      set filetype l
+      catch {file readlink "$k"} linkname
+      if {[file isdirectory "$k"]} {
+        set filetype ld
+      }
+    }
+
+    if {$dosorttest} {
+      switch -exact $config(fileshow,sort) {
+        time {
+          set tmp [format "%011d" $statinfo(mtime)]
+          set sortval_n  $tmp
+          set sortval_d  $tmp
+          set sortval_l  $tmp
+          set sortval_ld $tmp
+        }
+        rtime {
+          set tmp [format "%011d" [expr 2147483647 - $statinfo(mtime)]]
+          set sortval_n  $tmp
+          set sortval_d  $tmp
+          set sortval_l  $tmp
+          set sortval_ld $tmp
+        }
+        size {
+          set tmp [format "%011d" $statinfo(size)]
+          set sortval_n  $tmp
+          set sortval_d  $tmp
+          set sortval_l  $tmp
+          set sortval_ld $tmp
+        }
+        extension {
+          set tmp [file extension $k]$k
+          set sortval_n  $tmp
+          set sortval_d  $tmp
+          set sortval_l  $tmp
+          set sortval_ld $tmp
+        }
+      }
+    }
+    switch -exact $filetype {
+      n  {lappend dl [list $sortval_n $k n $statinfo(size) $statinfo(mtime) $statinfo(mode) $statinfo(uid) $statinfo(gid)]}
+      d  {lappend dl [list $sortval_d $k d $statinfo(size) $statinfo(mtime) $statinfo(mode) $statinfo(uid) $statinfo(gid)]}
+      l  {lappend dl [list $sortval_l $k l $statinfo(size) $statinfo(mtime) $statinfo(mode) $statinfo(uid) $statinfo(gid) $linkname]}
+      ld {lappend dl [list $sortval_ld $k ld $statinfo(size) $statinfo(mtime) $statinfo(mode) $statinfo(uid) $statinfo(gid) $linkname]}
+    }
+  }
+
+  if {$noperm} {
+    lappend dl [list 0 {Permission denied} n 0 0 0 0 0 ]
+  }
+
+# This will not correctly sort filenames with more than one word, but who cares...
+#  return [lsort $dl]
+# Philipp, 11.06.2006: I do!
+  set dl2 {}
+  foreach it $dl {
+    lappend dl2 [ join [ list [ string map { " " "" } [ lindex $it 0 ] ]\_[ string map { " " "" } [ lindex $it 1 ] ] [ lrange $it 1 end ] ] ]
+  }
+  return [ lsort -dictionary $dl2 ]
+}
+
+
+proc FTPDateStringToSeconds { date } {
+  set r [catch {clock scan "$date"} out]
+  if {!$r} {
+    # Had to add heuristics here to get the correct year since it doesn't say which year in the input string
+    set today [clock seconds]
+    # If the date looks like it's more than two months in the future, let's subtract a year...
+    if {$out > ($today+5184000)} {
+      set t [clock format $out]
+      set y [lindex $t end]
+      incr y -1
+      set t "[lrange $t 0 [expr [llength $t]-3]] $y"
+      set r [catch {clock scan $t} out2]
+      if {!$r} {
+        set out $out2
+      }
+    }
+    return $out
+  }
+  set r [catch {clock scan "[lindex $date 1] [lindex $date 0] [lindex $date 2]"} out]
+  if {$r} {return 0}
+  return "$out"
+}
+
+################################################################################
+# Philipp, 08.06.2006: here we want to but can't make entries colorful
+################################################################################
+# From a file-list (GetDirlist) construct a list suitable for displaying in the
+# listbox
+proc ConstructFileList { dirlist } {
+  set fl {}
+  foreach k $dirlist {
+    set type [lindex $k 2]
+    switch $type {
+      l   {
+        lappend fl [format "%-36s %7d %s %s %s -> %s " " [lindex $k 1]@" "[lindex $k 3]" "[GetTimeFromSecs [lindex $k 4]]" \
+                        "[GetStringFromMode [lindex $k 5]]" "[GetUidGidString [lindex $k 6] [lindex $k 7]]" \
+                        "[lindex $k 8]" ]
+      }
+      ld  {
+        lappend fl [format "%-36s %7d %s %s %s -> %s " "   [lindex $k 1]@/" "[lindex $k 3]" "[GetTimeFromSecs [lindex $k 4]]" \
+                        "[GetStringFromMode [lindex $k 5]]" "[GetUidGidString [lindex $k 6] [lindex $k 7]]" \
+                        "[lindex $k 8]" ]
+      }
+      d   {
+        lappend fl [format "%-36s %7d %s %s %s " "   [lindex $k 1]/" "[lindex $k 3]" "[GetTimeFromSecs [lindex $k 4]]" \
+                        "[GetStringFromMode [lindex $k 5]]" "[GetUidGidString [lindex $k 6] [lindex $k 7]]"  ]
+      }
+      n   {
+        lappend fl [format "%-36s %7d %s %s %s " " [lindex $k 1]" "[lindex $k 3]" "[GetTimeFromSecs [lindex $k 4]]" \
+                        "[GetStringFromMode [lindex $k 5]]" "[GetUidGidString [lindex $k 6] [lindex $k 7]]"  ]
+      }
+      fl  {
+        lappend fl [format "%-36s %7d %s %s %s -> %s " " [lindex $k 1]@" "[lindex $k 3]" "[GetTimeFromSecs [lindex $k 4]]" \
+                        "[lindex $k 5]" "[lindex $k 6]/[lindex $k 7]" \
+                        "[lindex $k 8]" ]
+      }
+      fld {
+        lappend fl [format "%-36s %7d %s %s %s -> %s " "   [lindex $k 1]@/" "[lindex $k 3]" "[GetTimeFromSecs [lindex $k 4]]" \
+                        "[lindex $k 5]" "[lindex $k 6]/[lindex $k 7]" \
+                        "[lindex $k 8]" ]
+      }
+      fd  {
+        lappend fl [format "%-36s %7d %s %s %s " "   [lindex $k 1]/" "[lindex $k 3]" "[GetTimeFromSecs [lindex $k 4]]" \
+                        "[lindex $k 5]" "[lindex $k 6]/[lindex $k 7]"  ]
+      }
+      fn  {
+        lappend fl [format "%-36s %7d %s %s %s " " [lindex $k 1]" "[lindex $k 3]" "[GetTimeFromSecs [lindex $k 4]]" \
+                        "[lindex $k 5]" "[lindex $k 6]/[lindex $k 7]"  ]
+      }
+    }
+  }
+  return $fl
+}
+
+proc InitWindows {} {
+  UpdateWindow both
+}
+
+proc Back { inst } {
+  global glob
+  while { 1 } {
+    set dir [lindex $glob($inst,dirstack) 0]
+    if  {$dir != ""} {
+      if {$dir == $glob($inst,pwd)} {
+        if {[llength $glob($inst,dirstack)] == 1} break
+        set glob($inst,dirstack) [lrange $glob($inst,dirstack) 1 end]
+        continue
+      }
+      set glob($inst,dirstack) [lrange $glob($inst,dirstack) 1 end]
+      NewPwd $inst $dir
+      UpdateWindow $inst
+      break
+    }
+    error "Internal error, dir is null"
+    break
+  }
+  #puts "back: $glob(left,dirstack)\n$glob(right,dirstack)\n"
+}
+
+proc UpdateWindow { inst } {
+  global glob
+#  SetActive $inst
+  if { $glob(async) } return
+  switch $inst {
+    left  { UpdateWindow_ left 0            }
+    right { UpdateWindow_ right 0           }
+    both  { UpdateWindow_ left 0
+            if { $glob(left,pwd) == $glob(right,pwd) } {
+              UpdateWindow_ right 1
+            } else {
+              UpdateWindow_ right 0
+            }
+          }
+  }
+  UpdateStat
+}
+
+proc UpdateWindow_ { inst quick } {
+  global glob
+  SetActive $inst
+  if {![IsFTP $glob($inst,pwd)]} {
+    set glob($inst,df) [GetDF $glob($inst,pwd)]
+  } else {
+    set glob($inst,df) ?
+  }
+  if { [IsFTP $glob(${inst},pwd)] && (!$glob(forceupdate)) } {
+    if {$glob(${inst},update_oldpwd) == $glob(${inst},pwd)} {
+      $glob(win,$inst).entry_dir delete 0 end
+      $glob(win,$inst).entry_dir insert end $glob(${inst},pwd)
+      $glob(win,$inst).entry_dir xview moveto 1.0
+      return ""
+    }
+  }
+
+  # next line for autoupdater
+  if {$quick} {
+    set glob($inst,lastmtime) $glob([Opposite $inst],lastmtime)
+  } else {
+    catch {set glob($inst,lastmtime) [file mtime $glob($inst,pwd)]}
+  }
+
+  set oldy [lindex [$glob(win,$inst).frame_listb.listbox1 yview] 0]
+  set oldlist $glob(${inst},filelist)
+  if {$quick} {
+    set r 0
+    set glob(${inst},filelist) $glob([Opposite $inst],filelist)
+  } else {
+    set r [catch {GetDirList $glob(${inst},pwd)} glob(${inst},filelist)]
+  }
+  if {$r != 0} {
+    PopError "Updating $inst panel: Error reading directory $glob(${inst},pwd) : $glob(${inst},filelist)"
+    NewPwd $inst /
+    set r [catch {GetDirList $glob(${inst},pwd)} glob(${inst},filelist)]
+    if {$r != 0} {
+      PopError "Fatal error: Cannot change to root directory. DON'T PANIC"
+      CleanUp 1
+    }
+  }
+
+  $glob(win,$inst).entry_dir delete 0 end
+  $glob(win,$inst).entry_dir insert end $glob(${inst},pwd)
+  $glob(win,$inst).entry_dir xview moveto 1.0
+
+  if {$oldlist == $glob(${inst},filelist) && (!$glob(forceupdate))} {
+    set glob(${inst},update_oldpwd) $glob(${inst},pwd)
+    return
+  }
+
+  $glob(win,$inst).frame_listb.listbox1 delete 0 end
+  if {$quick} {
+    eval $glob(win,$inst).frame_listb.listbox1 insert end [$glob(win,[Opposite ${inst}]).frame_listb.listbox1 get 0 end]
+  } else {
+    eval $glob(win,$inst).frame_listb.listbox1 insert end [ConstructFileList $glob(${inst},filelist)]
+  }
+# make the listbox entries colorful
+  ColorListBox ${inst}
+  if {$glob(${inst},update_oldpwd) == $glob(${inst},pwd)} {
+    $glob(win,$inst).frame_listb.listbox1 yview moveto $oldy
+  }
+  set glob(${inst},update_oldpwd) $glob(${inst},pwd)
+}
+
+#######################################################################################
+# Philipp, 09.06.2006: Apply a certain background and font color to every listbox entry
+#######################################################################################
+proc ColorListBox { inst } {
+  global glob
+  for { set lListCount 0 } { $lListCount < [ $glob(win,$inst).frame_listb.listbox1 size ] } { incr lListCount } {
+    set lItem(name) [ lindex [ lindex $glob(${inst},filelist) $lListCount ] 1 ]
+    set lItem(type) [ lindex [ lindex $glob(${inst},filelist) $lListCount ] 2 ]
+#   font color depends on link, ownership and setuid/setgid/sticky bit
+    set lFgR "00"; set lFgG "00"; set lFgB "00"
+#   check for links
+    if { [ string first "l" $lItem(type) ] == 0 } {
+      $glob(win,$inst).frame_listb.listbox1 itemconfigure $lListCount -foreground "#9900ff"
+      continue
+    }
+    if { ! [ file owned $lItem(name) ] } { set lFgR "99" }
+    set lPermissions [ split [ lindex  [ file attributes $lItem(name) ] end ] "" ]
+    if { [ lindex $lPermissions [ expr [ llength $lPermissions ] - 4 ] ] > 0 } { set lFgG "aa"; set lFgB "11" }
+#   background color depends on file permissions
+    set lBgR "ff"; set lBgG "ff"; set lBgB "ff"
+    if { [ file executable $lItem(name) ] } { set lBgR "cc" }
+    if { ! [ file readable $lItem(name) ] } { set lBgG "cc" }
+    if { ! [ file writable $lItem(name) ] } { set lBgB "cc" }
+#   set font and background color for list item
+    $glob(win,$inst).frame_listb.listbox1 itemconfigure $lListCount -background "#$lBgR$lBgG$lBgB"
+    $glob(win,$inst).frame_listb.listbox1 itemconfigure $lListCount -foreground "#$lFgR$lFgG$lFgB"
+  }
+}
+
+proc GotoNewDir { inst { ask 0 } } {
+  global glob
+  if {$ask} {
+    set newdir [EntryDialog "New $inst dir?" "New $inst directory?" "" question]
+  } else {
+    set newdir [$glob(win,$inst).entry_dir get]
+  }
+  if {$newdir == ""} return
+  DoProtCmd {
+    NewPwd ${inst} $newdir
+    UpdateWindow ${inst}
+  }
+  focus .
+}
+
+proc ToggleSelectEntry { inst y } {
+  global glob
+  set index [$glob(win,$inst).frame_listb.listbox1 nearest $y]
+  if {[$glob(win,$inst).frame_listb.listbox1 selection includes $index]} {
+    $glob(win,$inst).frame_listb.listbox1 selection clear $index
+    set glob(listbox,last) clear
+    set glob(listbox,last,idx) $index
+  } else {
+    $glob(win,$inst).frame_listb.listbox1 selection set $index
+    set glob(listbox,last) set
+    set glob(listbox,last,idx) $index
+  }
+}
+
+proc ToggleSelectEntryMotion { inst y } {
+  global glob
+  # For some reason, sometimes the ToggleSelectEntry function does not get called before this....
+  if {[info exists glob(listbox,last)]} {
+    set index [$glob(win,$inst).frame_listb.listbox1 nearest $y]
+    $glob(win,$inst).frame_listb.listbox1 selection $glob(listbox,last) $glob(listbox,last,idx) $index 
+  }
+}
+
+proc InitBindings {} {
+  global config glob
+
+  foreach inst {left right} {
+    bind $glob(win,$inst).entry_dir <Return> "GotoNewDir $inst;break"
+    bind $glob(win,$inst).entry_dir <KP_Enter> "GotoNewDir $inst;break"
+    bind $glob(win,$inst).entry_dir <3> "GotoNewDir $inst 1;break" 
+    bind $glob(win,$inst).entry_dir <Escape> " 
+      DoProtCmd \"UpdateWindow ${inst}\"
+      focus .
+    "
+    bind $glob(win,$inst).frame_listb.listbox1 <2> "
+      ToggleSelectEntry ${inst} %y
+      break
+    "
+    bind $glob(win,$inst).frame_listb.listbox1 <B2-Motion> "
+      ToggleSelectEntryMotion ${inst} %y
+      break
+    "
+    bind $glob(win,$inst).frame_listb.listbox1 <3> "
+      DoBut3 ${inst} \[lindex \$glob(${inst},filelist) \[$glob(win,$inst).frame_listb.listbox1 nearest %y\]\]
+    "
+    bind $glob(win,$inst).frame_listb.listbox1 <Double-1> "
+      DoBut3 ${inst} \[lindex \$glob(${inst},filelist) \[$glob(win,$inst).frame_listb.listbox1 nearest %y\]\]
+    "
+    bind $glob(win,$inst).frame_listb.listbox1 <Control-3> "
+      DoBut3Ctrl ${inst} \[lindex \$glob(${inst},filelist) \[$glob(win,$inst).frame_listb.listbox1 nearest %y\]\]
+    "
+    bind $glob(win,$inst).frame_listb.listbox1 <Control-Double-1> "
+      DoBut3Ctrl ${inst} \[lindex \$glob(${inst},filelist) \[$glob(win,$inst).frame_listb.listbox1 nearest %y\]\]
+    "
+    bind $glob(win,$inst).frame_listb.listbox1 <ButtonRelease-1> "+UpdateStat; UpdateWindow $inst"
+    bind $glob(win,$inst).frame_listb.listbox1 <ButtonRelease-2> "+UpdateStat; UpdateWindow $inst"
+#    bind $glob(win,$inst).frame_listb.listbox1 <ButtonRelease-1> "+UpdateStat"
+#    bind $glob(win,$inst).frame_listb.listbox1 <ButtonRelease-2> "+UpdateStat"
+    if {$config(keyb_support)} {
+      bind $glob(win,$inst).frame_listb.listbox1 <Any-1> "+focus $glob(win,$inst).frame_listb.listbox1"
+      bind $glob(win,$inst).frame_listb.listbox1 <Escape> "focus ."
+      bind $glob(win,$inst).frame_listb.listbox1 <Left> "DoProtCmd \" 
+          NewPwd $inst \\\$glob(${inst},pwd)/..
+          UpdateWindow $inst\"
+          catch \"focus $glob(win,$inst).frame_listb.listbox1\"
+          $glob(win,$inst).frame_listb.listbox1 activate 0
+          break
+        "
+      bind $glob(win,$inst).frame_listb.listbox1 <Right> "
+          DoProtCmd CmdView
+          catch \"focus $glob(win,$inst).frame_listb.listbox1\"
+          $glob(win,$inst).frame_listb.listbox1 activate 0
+          break
+        "
+      bind $glob(win,$inst).frame_listb.listbox1 <KeyPress> "DoCommandOnKey $inst %A"
+    }
+  }
+  if {!$config(keyb_support)} {
+    bind . <KeyPress> "
+      ShowListOnKey %A
+    "
+    bind . <Command-q> { CleanUp 0 }
+    bind . <Command-n> { Clone }
+  }
+}
+
+proc DoCommandOnKey { inst key } {
+  global glob
+  if {$key == ""} return
+  if {$key == "\r"} {
+    DoProtCmd "CmdView"
+    catch "focus $glob(win,$inst).frame_listb.listbox1"
+    return
+  }
+  foreach k [lrange $glob(cmds,list) 1 end] {
+    if {$key == [lindex $k 2]} {
+      DoProtCmd "[lindex $k 1]"
+      catch "focus $glob(win,$inst).frame_listb.listbox1"
+      return
+    }
+  }
+
+  LogStatusOnly "Cannot recognize keyboard shortcut $key"
+}
+
+proc UpdateStat { } {
+  UpdateStat_ left
+  UpdateStat_ right
+}
+
+proc UpdateStat_ { inst } {
+  global glob
+  set n 0
+  set s 0
+  set oldena $glob(enableautoupdate)
+  set glob(enableautoupdate) 0
+  foreach k [$glob(win,$inst).frame_listb.listbox1 curselection] {
+    set e [lindex $glob($inst,filelist) $k]
+    incr s [lindex $e 3]
+    incr n
+  }
+  if { $s > 1073741824 } {
+    set s [ format "%#3.1fGB" [ expr $s / 1073741824.0 ] ]
+  } elseif { $s > 1048576 } {
+    set s [ format "%#3.1fMB" [ expr $s / 1048576.0 ] ]
+  } elseif { $s > 1024 } {
+    set s [ format "%#3.1fKB" [ expr $s / 1024.0 ] ]
+  }
+  set len [llength $glob($inst,filelist)]
+  set glob(enableautoupdate) $oldena
+  $glob(win,$inst).panestat configure -text "$n/$len files ($s)"
+}
+
+
+proc ToggleSelect { inst } {
+  global glob
+  if { [ string eq "left" $inst ] || [ string eq "right" $inst ] } {
+    $glob(win,$inst).frame_listb.listbox1 selection set 0 end
+    UpdateStat
+  }
+}
+
+
+proc ShowListOnKey { char } {
+  global glob
+  if {$char == ""} return
+  set foc [focus]
+  switch -glob $foc {
+    *entry* return
+  }
+  ShowListOnKey_ $glob(win,left).frame_listb.listbox1 glob(left,filelist) $glob(left,pwd) $glob(right,pwd) "$char"
+  ShowListOnKey_ $glob(win,right).frame_listb.listbox1 glob(right,filelist) $glob(right,pwd) $glob(left,pwd) "$char"
+}
+
+proc ShowListOnKey_ { listb_name filelist_var frompwd topwd char } {
+  global glob
+  upvar $filelist_var filelist
+  set first ""
+  set last ""
+  if {[$listb_name curselection] != ""} {
+    if {[string match \[A-Za-z0-9\] $char]} {
+      set n 0
+      foreach k $filelist {
+        #puts "[string index [lindex $k 1] 0] == $char"
+        if {[string index [lindex $k 1] 0] == "$char" && [IsFile $k]} {
+          if {$first == ""} {
+            set first $n
+          }
+          set last $n
+        } 
+        incr n
+      }
+      if {$last != ""} {
+        $listb_name see $last
+      }
+      if {$first != ""} {
+        $listb_name see $first
+      }
+    }
+  }
+}
+
+proc IsFile { elem } {
+  switch [lindex $elem 2] {
+    l -
+    n -
+    fl -
+    fn { return 1 } 
+  }
+  return 0
+}
+
+
+#-----------------------------------------------------------------------------
+
+# If you understand how these functions work, let me know. I haven't got
+# the slighest idea anymore :-)
+
+proc CdMenuCreate { inst curdir menuwid level } {
+  global glob config
+  #puts "CdMenuCreate curdir: \'$curdir\'"
+  if { [string range $curdir 0 1] == "//" } {
+    set curdir [string range $curdir 1 end]
+  }
+  if { [IsFTP $curdir] } {
+    set curdir /
+  }
+  set r [catch {cd $curdir} outp]
+  if {$r != 0} {
+    $menuwid delete 0 end
+    if { [IsFTP $curdir] } {
+      $menuwid add command -label "Not implemented for FTP"
+    } else {
+      $menuwid add command -label $outp
+    }
+    return ""
+  }
+  set r [catch {pwd} curdir]
+  if {$r} {
+    $menuwid delete 0 end
+    $menuwid add command -label $curdir
+    return ""
+  }
+  if {$config(fileshow,all)} {
+    set r [catch {glob -nocomplain .*/ */} outp]
+  } else {
+    set r [catch {glob -nocomplain */} outp]
+  }
+  if {$r} {
+    $menuwid delete 0 end
+    $menuwid add command -label $outp
+    return ""
+  }
+
+  set menulist [lsort $outp]
+  if {!$config(fileshow,all)} {
+    set menulist [linsert $menulist 0 ..]
+  }
+
+  $menuwid delete 0 end
+  if { $level == 1 } { 
+    $menuwid add command -label / -command "CdMenuCommand $inst /"
+  }
+
+  foreach dir $menulist {
+    #puts "Adding cdmenucommand $curdir/$dir"
+    $menuwid add command -label $dir -command "CdMenuCommand $inst [Esc $curdir/$dir]"
+  }
+
+  bind $menuwid <Map> "CdMenuCreateCasc $inst [Esc $curdir] %W $level [list $menulist]"
+  bind $menuwid <Unmap> { %W.0 unpost }
+}
+
+proc CdMenuCreateCasc { inst curdir menuwid level menulist } {
+  global glob
+  #puts "CdMenuCreateCasc curdir: \'$curdir\'"
+  set n 0
+  if {[winfo exists $menuwid.0]} {
+    destroy $menuwid.0
+  }
+  menu $menuwid.0 -tearoff false
+
+  if {$level == 1} {
+    if {[winfo exists $menuwid.0.$n]} {
+      destroy $menuwid.0.$n
+    }
+    menu $menuwid.0.$n -tearoff false -postcommand "CdMenuCreate $inst / $menuwid.0.$n [expr $level+1]; update idletasks"
+    $menuwid.0 add cascade -menu $menuwid.0.$n
+    incr n
+  }
+  foreach dir $menulist {
+    if {[winfo exists $menuwid.0.$n]} {
+      destroy $menuwid.0.$n
+    }
+    menu $menuwid.0.$n -tearoff false -postcommand "CdMenuCreate $inst [Esc $curdir/$dir] $menuwid.0.$n [expr $level+1]; update idletasks"
+    $menuwid.0 add cascade -menu $menuwid.0.$n
+    incr n
+  }
+  $menuwid.0 post [expr [winfo rootx $menuwid] + [winfo width $menuwid] - 26] [winfo rooty $menuwid]
+}
+
+proc CdMenuCommand { inst dir } {
+  global glob
+  destroy $glob(win,$inst).top.bar1.button_dir.m
+  menu $glob(win,$inst).top.bar1.button_dir.m -tearoff false -postcommand "eval CdMenuCreate $inst \[Esc \$glob($inst,pwd)\] $glob(win,$inst).top.bar1.button_dir.m 1; update idletasks"
+  update idletasks
+  DoProtCmd "NewPwd $inst [Esc $dir] ; UpdateWindow $inst"
+}
+
+
+#-----------------------------------------------------------------------------
+
+
+
+proc DoBut3 { inst fileelem } {
+  DoProtCmd_NoGrab "DoBut3_ $inst \$fileelem"
+}
+
+proc DoBut3_ { inst fileelem } {
+  global glob env config
+  switch [lindex $fileelem 2] {
+    fd  -
+    fld -
+    ld  - 
+    d   { NewPwd $inst $glob($inst,pwd)/[lindex $fileelem 1]
+          UpdateWindow $inst
+        }
+    fn  -
+    fl  {
+          set r [regexp {ftp://([^/]*)(.*)} $glob($inst,pwd) match ftpI directory]
+          if {$r == 0} { 
+            PopError "Can't parse $glob($inst,pwd) as ftp URL" 
+          } else { 
+            set r 0
+            if { ! [file exists $glob(tmpdir)] } {
+              set r [Try { file mkdir $glob(tmpdir) } "" 1]
+            }
+            if { !$r } {
+              set size [lindex $fileelem 3]
+              if {[lindex $fileelem 2] == "fl"} {set size -1}
+              set r [Try { FTP_GetFile $ftpI "$directory/[lindex $fileelem 1]" "$glob(tmpdir)/[lindex $fileelem 1]" $size 0 } "" 1]
+              if {$r == 0} { ViewAny $glob(tmpdir)/[lindex $fileelem 1]; set glob(havedoneftp) 1 }
+            }
+          }
+        }
+    n   -
+    l   {
+          ViewAny [list "$glob($inst,pwd)/[lindex $fileelem 1]"]
+        }
+  }
+}
+
+proc Opposite { inst } {
+  if {$inst == "left" } {return right}
+  if {$inst == "right" } {return left}
+  error "Internal error ($inst)"
+}
+
+proc DoBut3Ctrl { inst fileelem } {
+  DoProtCmd_NoGrab "DoBut3Ctrl_ $inst \{$fileelem\}"
+}
+
+proc DoBut3Ctrl_ { inst fileelem } {
+  global glob
+  switch [lindex $fileelem 2] {
+    fd  -
+    fld -
+    ld  - 
+    d   { NewPwd [Opposite $inst] $glob($inst,pwd)/[lindex $fileelem 1]
+          UpdateWindow [Opposite $inst]
+        }
+  }
+}
+
+proc CheckAbort { info } {
+  global glob
+  update
+  if { $glob(abortcmd) } {
+    Log "$info aborted"
+    #set glob(abortcmd) 0
+    return 1
+  }
+  return 0
+}
+
+proc CantDoThat { } {
+  PopInfo "It would be cool if FileRunner could do that, but it can't (yet)..."
+}
+
+
+
+proc DoUsrCmd { proc } {
+  global glob
+  set r [DoUsrCmd_ $glob(win,left).frame_listb.listbox1 glob(left,filelist) $glob(left,pwd) $glob(right,pwd) $proc]
+  if {$r} {
+    UpdateWindow both
+    return
+  }
+  set r [DoUsrCmd_ $glob(win,right).frame_listb.listbox1 glob(right,filelist) $glob(right,pwd) $glob(left,pwd) $proc]
+  if {$r} {
+    UpdateWindow both
+    return
+  }
+  Try { $proc "" $glob(right,pwd) $glob(left,pwd) $glob(mbutton) } "" 1
+  UpdateWindow both
+}
+
+proc DoUsrCmd_ { listb_name filelist_var frompwd topwd proc } {
+  global config glob
+  upvar $filelist_var filelist
+
+  set fl {}
+  foreach sel [$listb_name curselection] {
+    if {[CheckAbort "UserCommand $proc"]} return
+    set elem [lindex $filelist $sel]
+    lappend fl [lindex $elem 1]
+  }
+  if {$fl == ""} {return 0}
+  Try { $proc $fl $frompwd $topwd $glob(mbutton) } "" 1
+  return 1
+}
+
+proc CheckWhoOwns { file action } {
+  global config
+  if {!$config(check_ownership)} {return 1}
+  set r [CheckOwner $file]
+  if {$r} {return 1}
+  set r [tk_dialog_fr .apop "!" "$file is not owned by you. OK to go ahead and try to $action anyway?" "" 1 "Yes" "No"]
+  if {$r == 0} {return 1}
+  return 0
+}
+
+
+proc NewPwd { inst newpwd } { 
+  global glob config
+
+  while { 1 } {
+    if { [string range $newpwd 0 1] == "//" } {
+      set newpwd [string range $newpwd 1 end]
+    }
+
+    set tmp1 [string range $newpwd 0 5]
+    set tmp2 [string range $glob(${inst},newpwd_oldpwd) 0 5]
+    if { $tmp1 == "ftp://" } {
+      set mode ftp
+
+      set r [regexp {ftp://([^/]*)(.*)} $newpwd match ftpI newpwd2]
+      if {$r != 0 && $ftpI != "" && $newpwd2 == ""} { set newpwd2 / }
+      if {$r == 0 || $ftpI == "" || $newpwd2 == ""} { 
+        set newpwd [EntryDialog "Error in path" "Malformed URL $newpwd\nFormat: ftp://<site>/<path>\nPlease edit new path or cancel." $newpwd warning]
+        if {$newpwd == ""} return ""
+        continue
+      }
+
+      set r [catch {OpenFTP $ftpI} out]
+      if {$r} { 
+        if {$out == "ABORT_FTP_LOGIN_PLEASE" } {
+          LogStatusOnly "FTP login aborted"
+          return ""
+        }
+        set newpwd [EntryDialog "Error connecting" "Error: $out\n\nPlease edit new path or cancel." $newpwd warning]
+        if {$newpwd == ""} return
+        continue
+      }
+
+      set r [catch {FTP_CD $ftpI "$newpwd2"} out]
+      if {$r} { 
+        set newpwd [EntryDialog "Error in path" "Error: $out\nPlease edit new path or cancel. If you want to create it, press Create." $newpwd warning 1]
+        # The following is in order to make sure the connection to the FTP site is not lost even though we didn't get
+        # the initial path correct.
+        set r [catch {FTP_PWD $ftpI} out]
+        if {!$r} {
+          set glob(${inst},pwd) ftp://$ftpI$out
+          if {$newpwd == ""} break
+        }
+        if {$newpwd == ""} return
+        continue
+      }
+
+      if {$config(ftp,cd_pwd)} {
+        set r [catch {FTP_PWD $ftpI} out]
+        if {!$r} {
+          set glob(${inst},pwd) ftp://$ftpI$out
+        } else {
+          PopError "$out"
+          return
+        }
+      } else {
+        # Evaluate xxx/yyy/zzz/../.. to xxx
+        while {[regexp -- {/\.\.$} $newpwd2]} {
+          set newpwd2 [file dirname [file dirname $newpwd2]]
+        }
+        set glob(${inst},pwd) ftp://$ftpI$newpwd2
+      }
+      break
+    } else {
+      set mode normal
+      set r [catch {cd "$newpwd"} out]
+      if {$r} { 
+        set newpwd [EntryDialog "Error in path" "Error: $out\nPlease edit new path or cancel. If you want to create it, press Create." $newpwd warning 1]
+        if {$newpwd == ""} return ""
+        continue
+      }
+      if {$config(cd_pwd) || ([string index $newpwd 0] != "/")} {
+        set r [catch {Pwd} out]
+        if {$r} { 
+          PopError "Trying to get directory info: $out"
+          return "" 
+        }
+        set glob(${inst},pwd) $out
+      } else {
+        # Evaluate xxx/yyy/zzz/../.. to xxx
+        while {[regexp -- {/\.\.$} $newpwd]} {
+          set newpwd [file dirname [file dirname $newpwd]]
+        }
+        set glob(${inst},pwd) $newpwd
+      }
+      break
+    }
+  }
+
+  if { $tmp2 == "ftp://" } {
+    set r [regexp {ftp://([^/]*)(.*)} $glob(${inst},newpwd_oldpwd) match ftpI newpwd]
+    if { $r == 0 } { PopError "Malformed URL $glob(${inst},newpwd_oldpwd) (fatal)"; CleanUp 0 }
+    CloseFTP $ftpI
+  }
+
+  set glob(${inst},newpwd_oldpwd) $glob(${inst},pwd)
+
+  AppendToDirHistory $glob(${inst},pwd)
+
+  set glob($inst,dirstack) [linsert $glob($inst,dirstack) 0 $glob(${inst},pwd)]
+  if { [llength $glob($inst,dirstack)] > 110 } {
+    set glob($inst,dirstack) [lrange $glob($inst,dirstack) 0 100]
+  }
+  #puts "back: $glob(left,dirstack)\n$glob(right,dirstack)\n"
+}
+
+proc AppendToDirHistory {dir} {
+  global glob
+  set found_index [lsearch -exact $glob(history) $dir]  
+  if { $found_index == -1 } { 
+    lappend glob(history) $dir
+    set listlength [llength $glob(history)]
+    if { $listlength > 32 } {
+      set glob(history) [lrange $glob(history) [expr $listlength - 30] end ]
+    }
+    #puts "$glob(history)"
+  } elseif { $found_index >= 0 } {
+    set list1 [lrange $glob(history) 0 [expr $found_index-1] ]
+    set list2 [lrange $glob(history) [expr $found_index+1] end]
+    set glob(history) [concat $list1 $list2]
+    lappend glob(history) $dir
+  }
+}
+
+proc CreateHistoryMenu { inst } {
+  global glob
+  set menun $glob(mainmenu).historymenu
+  $menun delete 0 end
+  foreach dir $glob(history) {
+    $menun add command -label "$dir" -command "CdHistory ${inst} \{$dir\}"
+  }
+}
+
+proc CdHistory { inst dir } {
+  global glob
+  DoProtCmd "
+    NewPwd ${inst} \{$dir\}
+    UpdateWindow ${inst}
+  "
+}
+
+
+proc CreateHotListMenu { inst } {
+  global glob
+  set menun $glob(mainmenu).bookmarksmenu
+  $menun delete 0 end
+  $menun add command -label "Add to hotlist" -command "AddToHotList \"\$glob($inst,pwd)\""
+  $menun add separator
+  set n 0
+  foreach dir $glob(hotlist) {
+    if { [lindex $dir 1] != "" } {
+      if { [string index [lindex $dir 0] 0] == "-" } {
+        # submenu
+        catch {destroy $menun.$n}
+        menu $menun.$n -tearoff false
+        foreach sub [lrange $dir 1 end] {
+          if { [lindex $sub 1] != "" } {
+            $menun.$n add command -label "[lindex $sub 0]" -command "CdHotList $inst \{[lindex $sub 1]\}"
+          } else {
+            $menun.$n add command -label "$sub" -command "CdHotList $inst \{$sub\}"
+          }
+        }
+        $menun add cascade -menu $menun.$n -label "[string range [lindex $dir 0] 1 end]"
+        incr n
+      } else {
+        # commented menu
+        $menun add command -label "[lindex $dir 0]" -command "CdHotList $inst \{[lindex $dir 1]\}"
+      }
+    } else {
+      $menun add command -label "$dir" -command "CdHotList $inst \{$dir\}"
+    }
+  }
+}
+
+proc CdHotList { inst dir } {
+  DoProtCmd "
+    NewPwd $inst \{$dir\}
+    UpdateWindow $inst
+  "
+}
+
+proc AddToHotList { currentpwd } {
+  global glob
+  if {[lindex $currentpwd 1] != ""} {
+    set currentpwd [list $currentpwd $currentpwd]
+  }
+  #puts "$currentpwd"
+  lappend glob(hotlist) $currentpwd
+}
+
+
+
+#proc pvar { name element op } {
+#  if { $element != "" } {
+#    set name ${name} ($element)
+#  }
+#  upvar $name x
+#  puts "Variable $name set to $x"
+#}
+
+proc ViewText { filename } {
+  set r [catch {open $filename r} fid]
+  if {$r != 0} {
+    PopError "$fid"
+    return
+  }
+  set r [catch {read -nonewline $fid} content]
+  if {$r != 0} {
+    PopError "$content"
+    catch {close $fid}
+    return
+  }
+  close $fid
+  ViewString "Viewing $filename" content $filename
+}
+
+proc ViewString { title var_string filename } {
+  global glob config
+  upvar $var_string string
+
+  incr glob(toplevelidx)  
+
+  set w .toplevel_$glob(toplevelidx)
+  toplevel $w
+  wm title $w "$title"
+  wm iconname $w "$title"
+  wm geometry $w $config(geometry,textviewer)
+
+  text $w.text -yscrollcommand "$w.fr.scroll set" -setgrid 1 \
+      -height 30 -font $config(gui,font) -background $config(gui,color_bg) \
+      -foreground $config(gui,color_fg) -selectbackground $config(gui,color_select_bg) \
+      -selectforeground $config(gui,color_select_fg)
+  frame $w.fr 
+  scrollbar $w.fr.scroll -command "$w.text yview" 
+#  set ::GImgArr(cross) [image create photo -file $glob(lib_fr)/bitmaps/cross.ppm]
+#  button $w.fr.quit -image $::GImgArr(cross) -command "destroy $w" -width 1 -height 11 
+  pack $w.fr.scroll -side bottom -fill y -expand 1
+#  pack $w.fr.quit -side top -fill x
+  pack $w.fr -side right -fill y
+  pack $w.text -expand yes -fill both
+  $w.text insert 0.0 $string
+  $w.text mark set insert 0.0
+  menu $w.text.p
+  $w.text.p add command -label Search... -command "SearchView $w.text 0"
+  $w.text.p add command -label {Search Again} -command "SearchView $w.text 1"
+  $w.text.p add command -label {Save As...} -command "SaveToFile $w.text [Esc $filename] 1"
+  $w.text.p add command -label Quit -command "destroy $w"
+  bind $w.text <3> "tk_popup $w.text.p %X %Y"
+  bind $w <Escape> "destroy $w"
+  bind $w <Next> "$w.text yview scroll 1 pages"
+  bind $w <Prior> "$w.text yview scroll -1 pages"
+  bind $w <1> "bind $w \<Next\> \"\" ; bind $w \<Prior\> \"\""
+  bind $w <Home> "$w.text see 0.0"
+  bind $w <End> "$w.text see end"
+  bind $w.text $config(mwheel,neg) "$w.text yview scroll -$config(mwheel,delta) units"
+  bind $w.text $config(mwheel,pos) "$w.text yview scroll $config(mwheel,delta) units"
+
+  #catch {focus $w.text}
+  #tkwait window $w
+}
+
+proc SaveToFile { w filename ask } {
+  global env
+  if {$ask} {
+    if {$filename == ""} {set filename $env(HOME)/}
+    set filename [EntryDialog "What file?" "Enter name of file to save to" $filename question]
+    if {$filename == ""} return
+  } else {
+    if {$filename == ""} {PopError "Null filename"}
+  }
+  Log "Saving to $filename"
+  Try { set fid [open $filename w]
+        puts -nonewline $fid [$w get 0.0 end]
+        close $fid} "" 1
+}
+
+
+proc SearchView { w again } {
+  global glob config
+  if {!$again} {
+    set s [EntryDialog "Search..." "Enter text to search for" $glob(searchstring) question]
+    if {$s == ""} return
+    set glob(searchstring) $s
+    $w mark set insert 0.0
+  }
+
+  set tag select
+  $w tag configure $tag -background $config(gui,color_select_bg) -foreground $config(gui,color_select_fg) 
+  $w tag remove $tag 0.0 end
+  set idx [$w search -count len -nocase -- $glob(searchstring) insert]
+  if {$idx == ""} {
+    PopInfo "$glob(searchstring) not found"
+    return
+  }
+  $w tag add $tag $idx "$idx + $len chars"
+  $w mark set insert "$idx + $len chars"
+  $w see insert
+}
+
+
+proc EditText { filename scriptWhenDone } {
+  global glob config
+  incr glob(toplevelidx)  
+
+  set w .toplevel_$glob(toplevelidx)
+  toplevel $w
+  wm title $w "Editing $filename"
+  wm iconname $w "Editing $filename"
+  wm protocol $w WM_DELETE_WINDOW "EditTextCheckPoint [Esc $filename] $w \"$scriptWhenDone\""
+  wm geometry $w $config(geometry,qedit)
+
+  text $w.text -yscrollcommand "$w.fr.scroll set" -setgrid 1 \
+	-highlightthickness 0 -height 30 -font $config(gui,font) -background $config(gui,color_bg) -foreground $config(gui,color_fg) -selectbackground $config(gui,color_select_bg) -selectforeground $config(gui,color_select_fg)
+  frame $w.fr 
+  scrollbar $w.fr.scroll -command "$w.text yview" 
+#  set ::GImgArr(cross) [image create photo -file $glob(lib_fr)/bitmaps/cross.ppm]
+#  button $w.fr.quit -command "EditTextCheckPoint [Esc $filename] $w \"$scriptWhenDone\"" -width 1 -height 11 
+  pack $w.fr.scroll -side bottom -fill y -expand 1
+#  pack $w.fr.quit -side top -fill x
+  pack $w.fr -side right -fill y
+  pack $w.text -expand yes -fill both
+  set fid [open $filename r]
+  $w.text insert 0.0 [read -nonewline $fid]
+  close $fid
+  set size_file [file size $filename]
+  set size_text [string length [$w.text get 0.0 end]]
+  if { $size_file != $size_text } {
+    PopWarn "Editing:\nCharacters lost/added when converting $filename to text.\nOld size: $size_file\nNew Size: $size_text"
+  }
+  $w.text mark set insert 0.0
+  menu $w.text.p
+  $w.text.p add command -label Search... -command "SearchView $w.text 0"
+  $w.text.p add command -label {Search Again} -command "SearchView $w.text 1"
+  $w.text.p add command -label {Save} -command "SaveToFile $w.text [Esc $filename] 0"
+  $w.text.p add command -label {Save As...} -command "SaveToFile $w.text [Esc $filename] 1"
+  $w.text.p add command -label {Save&Quit} -command "SaveEditedText [Esc $filename] $w \"$scriptWhenDone\""
+  $w.text.p add command -label Quit -command "destroy $w"
+  bind $w.text <3> "tk_popup $w.text.p %X %Y"
+  bind $w <Escape> "EditTextCheckPoint [Esc $filename] $w \"$scriptWhenDone\""
+  bind $w <Next> "$w.text yview scroll 1 pages"
+  bind $w <Prior> "$w.text yview scroll -1 pages"
+  bind $w <Home> "$w.text see 0.0"
+  bind $w <End> "$w.text see end"
+  bind $w.text $config(mwheel,neg) "$w.text yview scroll -$config(mwheel,delta) units"
+  bind $w.text $config(mwheel,pos) "$w.text yview scroll $config(mwheel,delta) units"
+}
+
+proc EditTextCheckPoint { filename w scriptWhenDone } {
+  set r [tk_dialog .editq {What to do?} {Do you want to save before exiting?} {} 0 Yes No Cancel]
+  switch $r {
+    0 { SaveEditedText $filename $w $scriptWhenDone }
+    1 { catch { destroy $w } }
+    default {}
+  }
+}
+
+proc SaveEditedText { filename w scriptWhenDone } {
+  Log "Text editor: Saving $filename"
+  Try { set fid [open $filename w]
+        puts -nonewline $fid [$w.text get 0.0 end]
+        close $fid} "" 1
+  catch {destroy $w}
+  UpdateWindow both
+  if {$scriptWhenDone != ""} {
+    eval $scriptWhenDone
+  }
+}
+
+proc EntryDialog { wm_title info_text start_entry {icon ""} {createdir 0}} {
+  global glob config
+
+  set w .entry_dialog
+  toplevel $w -class Dialog
+  wm title $w $wm_title
+  wm iconname $w $wm_title
+  wm resizable $w true false
+  wm transient $w [winfo toplevel [winfo parent $w]]
+
+  frame $w.bot
+  entry $w.entry  -font $config(gui,font) -background $config(gui,color_bg) -foreground $config(gui,color_fg) -width 70 -selectbackground $config(gui,color_select_bg) -selectforeground $config(gui,color_select_fg)
+  $w.entry delete 0 end
+  $w.entry insert end $start_entry
+
+  set text_length [string length $info_text]
+  set info_text [string range $info_text 0 1000]
+  if {$text_length > [string length $info_text]} {
+    set info_text "$info_text\n\n...etc..."
+  }
+
+  label $w.bot.info_text -justify left -text "$info_text"  -wraplength 5i
+#  label $w.info_text -justify left -text "$info_text\nReturn activates, escape or window-delete cancels."
+
+  button $w.bot.ok -text OK -command { 
+    set glob(entry_dialog_return) [.entry_dialog.entry get]
+    destroy .entry_dialog
+  }
+  button $w.bot.cancel -text Cancel -command { 
+    set glob(entry_dialog_return) {}
+    set glob(abortcmd) 1
+    destroy .entry_dialog
+  }
+
+  pack $w.bot -side bottom -expand 1 -fill x
+  pack $w.bot.cancel -side right -anchor s
+  pack $w.bot.ok -side right -anchor s
+
+  if {$createdir} {
+    button $w.bot.create -text Create -command { 
+      set glob(entry_dialog_return) [.entry_dialog.entry get]
+      set r [regexp {ftp://([^/]*)(.*)} $glob(entry_dialog_return) match ftpI dir]
+      if {$r} {
+        Try { FTP_MkDir $ftpI "$dir" } "" 1
+      } else {
+        Try { file mkdir $glob(entry_dialog_return) } "" 1
+      }
+      destroy .entry_dialog
+    }
+    pack $w.bot.create -side right -anchor s
+  }
+
+  if {$icon != ""} {
+    label $w.bot.icon -bitmap $icon
+    pack $w.bot.icon -side left -padx 20 -anchor n -pady 2
+  }
+  pack $w.bot.info_text -side left -fill x -expand 1 -anchor w
+
+#-padx 8 -pady 5
+
+  pack $w.entry -side bottom -padx 8 -pady 8 -expand 1 -fill x
+
+  set glob(entry_dialog_return) {}
+
+  bind $w.entry <Return> {
+    set glob(entry_dialog_return) [.entry_dialog.entry get]
+    destroy .entry_dialog
+  }
+
+  bind $w.entry <KP_Enter> {
+    set glob(entry_dialog_return) [.entry_dialog.entry get]
+    destroy .entry_dialog
+  }
+
+  bind $w.entry <Escape> {
+    set glob(entry_dialog_return) {}
+    set glob(abortcmd) 1
+    destroy .entry_dialog
+  }
+
+  wm withdraw $w
+  update idletasks
+  set pw [winfo parent $w]
+  set x [expr [winfo width $pw]/2 - [winfo reqwidth $w]/2 \
+      + [winfo x $pw]]
+  set y [expr [winfo height $pw]/2 - [winfo reqheight $w]/2 \
+      + [winfo y $pw]]
+  wm geom $w +$x+$y
+  wm deiconify $w
+
+  set oldFocus [focus]
+  set oldGrab [grab current $w]
+  frgrab $w
+  focus $w.entry
+  set oldena $glob(enableautoupdate)
+  set glob(enableautoupdate) 0
+  tkwait window $w
+  catch {focus $oldFocus}
+  if {$oldGrab != ""} {
+    frgrab $oldGrab
+  }
+  set glob(enableautoupdate) $oldena
+  return $glob(entry_dialog_return)
+}
+
+proc FTPEntryDialog { wm_title info_text start_entry } {
+  global glob config
+
+  set w .ftp_entry_dialog
+  toplevel $w -class Dialog
+  wm title $w $wm_title
+  wm iconname $w $wm_title
+  wm resizable $w true false
+  wm transient $w [winfo toplevel [winfo parent $w]]
+
+  label $w.info_text -justify left -text "$info_text\n\nReturn activates, escape or window-delete cancels."
+  pack "$w.info_text" -anchor w -side top -padx 8 -pady 5
+
+  label $w.us -text Username:
+  pack $w.us -side top -anchor w -padx 8
+
+  entry $w.entry  -font $config(gui,font) -background $config(gui,color_bg) -foreground $config(gui,color_fg) -width 70 -selectbackground $config(gui,color_select_bg) -selectforeground $config(gui,color_select_fg)
+  $w.entry delete 0 end
+  $w.entry insert end $start_entry
+  pack $w.entry -anchor w -side top -padx 8 -pady 4 -expand 1 -fill x
+
+  label $w.pw -text Password:
+  pack $w.pw -side top -anchor w -padx 8
+
+  entry $w.entry2  -show "*" -font $config(gui,font) -background $config(gui,color_bg) -foreground $config(gui,color_fg) -width 70 -selectbackground $config(gui,color_select_bg) -selectforeground $config(gui,color_select_fg)
+  $w.entry2 delete 0 end
+  $w.entry2 insert end ""
+  pack $w.entry2 -anchor w -side top -padx 8 -pady 4 -expand 1 -fill x
+
+  set glob(ftp_entry_dialog_return) {}
+
+  bind $w.entry <Return> {
+    set glob(ftp_entry_dialog_return) " [.ftp_entry_dialog.entry get] [.ftp_entry_dialog.entry2 get] "
+    destroy .ftp_entry_dialog
+  }
+
+  bind $w.entry <Escape> {
+    set glob(ftp_entry_dialog_return) {}
+    destroy .ftp_entry_dialog
+  }
+
+  bind $w.entry2 <Return> {
+    set glob(ftp_entry_dialog_return) " [.ftp_entry_dialog.entry get] [.ftp_entry_dialog.entry2 get] "
+    destroy .ftp_entry_dialog
+  }
+
+  bind $w.entry2 <Escape> {
+    set glob(ftp_entry_dialog_return) {}
+    destroy .ftp_entry_dialog
+  }
+
+  wm withdraw $w
+  update idletasks
+  set pw [winfo parent $w]
+  set x [expr [winfo width $pw]/2 - [winfo reqwidth $w]/2 \
+      + [winfo x $pw]]
+  set y [expr [winfo height $pw]/2 - [winfo reqheight $w]/2 \
+      + [winfo y $pw]]
+  wm geom $w +$x+$y
+  wm deiconify $w
+
+  set oldFocus [focus]
+  set oldGrab [grab current $w]
+  frgrab $w
+  focus $w.entry
+  set oldena $glob(enableautoupdate)
+  set glob(enableautoupdate) 0
+  tkwait window $w
+  catch {focus $oldFocus}
+  if {$oldGrab != ""} {
+    frgrab $oldGrab
+  }
+  set glob(enableautoupdate) $oldena
+  return $glob(ftp_entry_dialog_return)
+}
+
+proc EntryDialogDouble { wm_title info_text1 info_text2 info_text3 start_entry1 start_entry2 } {
+  global glob config
+
+  set w .tk_dialog_double
+  toplevel $w -class Dialog
+  wm title $w $wm_title
+  wm iconname $w $wm_title
+  wm resizable $w true false
+  wm transient $w [winfo toplevel [winfo parent $w]]
+
+  label $w.info_text -justify left -text $info_text1 -wraplength 7i
+  pack $w.info_text -anchor w -side top -padx 8 -pady 5
+
+  entry $w.entry  -font $config(gui,font) -background $config(gui,color_bg) -foreground $config(gui,color_fg) -width 70 -selectbackground $config(gui,color_select_bg) -selectforeground $config(gui,color_select_fg)
+  $w.entry delete 0 end
+  $w.entry insert end $start_entry1
+  pack $w.entry -anchor w -side top -padx 8 -pady 4 -expand 1 -fill x
+
+  label $w.info_text2 -text $info_text2 -justify left -wraplength 7i
+  pack $w.info_text2 -side top -anchor w -padx 8 -pady 5
+
+  entry $w.entry2  -show "*" -font $config(gui,font) -background $config(gui,color_bg) -foreground $config(gui,color_fg) -width 70 -selectbackground $config(gui,color_select_bg) -selectforeground $config(gui,color_select_fg)
+  $w.entry2 delete 0 end
+  $w.entry2 insert end $start_entry2
+  pack $w.entry2 -anchor w -side top -padx 8 -pady 4 -expand 1 -fill x
+
+  label $w.info_text3 -text $info_text3 -justify left -wraplength 7i
+  pack $w.info_text3 -side top -anchor w -padx 8 -pady 5
+
+  button $w.ok -text OK -command {
+    set glob(tk_dialog_double_return) [list [.tk_dialog_double.entry get] [.tk_dialog_double.entry2 get]]
+    destroy .tk_dialog_double
+  }
+
+  button $w.cancel -text Cancel -command {
+    set glob(tk_dialog_double_return) {}
+    destroy .tk_dialog_double
+  }
+
+  pack $w.cancel -side right
+  pack $w.ok -side right
+
+  set glob(tk_dialog_double_return) {}
+
+  bind $w.entry <Return> {
+    set glob(tk_dialog_double_return) [list [.tk_dialog_double.entry get] [.tk_dialog_double.entry2 get]]
+    destroy .tk_dialog_double
+  }
+
+  bind $w.entry <Escape> {
+    set glob(tk_dialog_double_return) {}
+    destroy .tk_dialog_double
+  }
+
+  bind $w.entry2 <Return> {
+    set glob(tk_dialog_double_return) [list [.tk_dialog_double.entry get] [.tk_dialog_double.entry2 get]]
+    destroy .tk_dialog_double
+  }
+
+  bind $w.entry2 <Escape> {
+    set glob(tk_dialog_double_return) {}
+    destroy .tk_dialog_double
+  }
+
+  wm withdraw $w
+  update idletasks
+  set pw [winfo parent $w]
+  set x [expr [winfo width $pw]/2 - [winfo reqwidth $w]/2 \
+      + [winfo x $pw]]
+  set y [expr [winfo height $pw]/2 - [winfo reqheight $w]/2 \
+      + [winfo y $pw]]
+  wm geom $w +$x+$y
+  wm deiconify $w
+
+  set oldFocus [focus]
+  set oldGrab [grab current $w]
+  frgrab $w
+  focus $w.entry
+  set oldena $glob(enableautoupdate)
+  set glob(enableautoupdate) 0
+  tkwait window $w
+  catch {focus $oldFocus}
+  if {$oldGrab != ""} {
+    frgrab $oldGrab
+  }
+  set glob(enableautoupdate) $oldena
+  return $glob(tk_dialog_double_return)
+}
+
+proc ViewAny { filenamelist } {
+  global glob config
+  set firstfile [lindex $filenamelist 0]
+  set found ""
+  foreach k $config(view,extensions) {
+    foreach l [lindex $k 1] {
+      if {[string match [string tolower $l] [string tolower "$firstfile"]]} {
+        set found $k
+        break
+      }
+    }
+    if {$found != ""} break
+  }
+  if {$found != ""} {
+    if {[lindex $k 2] == "-viewtext"} {
+      foreach file $filenamelist {
+        catch { eval eval exec [format [lindex $k 0] [Esc $file]] } out
+        ViewString "Viewing $file" out ""
+      }
+    } else {
+      # list needs to be escaped...
+      foreach f $filenamelist {
+        lappend f2 [Esc $f]
+      }
+      Try {eval eval eval exec [format [lindex $k 0] $f2] &} "" 1
+    }
+    return
+  }
+  foreach filename $filenamelist {
+    ViewText "$filename"
+  }
+}
+
+
+proc UnArcAny { file dir } {
+  global config glob
+  set found ""
+  foreach k $config(cmd,unarc,extensions) {
+    foreach l [lindex $k 1] {
+      if {[string match [string tolower $l] [string tolower "$file"]]} {
+        set found $k
+        break
+      }
+    }
+    if {$found != ""} break
+  }
+  if {$found == ""} {
+    PopWarn "Cannot find unarchive rule for $file"
+    return
+  }
+  Try { cd $dir; eval eval exec [format [lindex $k 0] [Esc $file]] } "" 1 $glob(async)
+}
+
+proc UnPackAny { file } {
+  global config glob
+  set found ""
+  foreach k $config(cmd,unpack,extensions) {
+    foreach l [lindex $k 1] {
+      if {[string match [string tolower $l] [string tolower "$file"]]} {
+        set found $k
+        break
+      }
+    }
+    if {$found != ""} break
+  }
+  if {$found == ""} {
+    PopWarn "Cannot find unpack rule for $file"
+    return
+  }
+  Try { eval eval exec [format [lindex $k 0] [Esc $file]] } "" 1 $glob(async)
+}
+
+proc TabBind { list } {
+  set i [lsearch -exact $list [focus]]
+  incr i
+  if {$i >= [llength $list]} {
+    set i 0
+  }
+  catch {focus [lindex $list $i]} out
+}
+
+
+proc PopInfo { info } {
+  tk_dialog_fr .apop "Info" "$info" "" 0 "OK"
+  #LogSilent "**Info**\n$info"
+}
+
+proc PopWarn { warn } {
+  tk_dialog_fr .apop "Warning" "$warn" "" 0 "OK"
+  LogStatusOnly "[lindex [split $warn \n] 0]"
+  LogSilent "**Warning**\n$warn"
+}
+
+proc PopError { error } {
+  tk_dialog_fr .apop "**Error**" "$error" "" 0 "OK"
+  LogStatusOnly "[lindex [split $error \n] 0]"
+  LogSilent "**Error**\n$error"
+}
+
+proc PopErrorSimple { error } {
+  tk_dialog .apop "**Error**" "$error" "" 0 "OK"
+}
+
+proc Try { tryscript excuse alsoPrintErrorInfo {async 0} } {
+  puts "Try:$tryscript"
+  if {$async} {
+    # Currently the try function can only background commands that use the built-in exec
+    if {[string match "*exec*" $tryscript]} {
+      set tryscript "$tryscript &"
+    }
+  }
+  set r [catch {uplevel $tryscript} outp ]
+  if {$r == 0} {return 0}
+
+  # This is a really ugly hack, but I don't care... I can't see another way around this. Email me if you got a solution.
+  # (Problem shows up in Linux when unarchiving .tar.gz files and the error is completely harmless)
+  if {$outp == "child killed: write on pipe with no readers"} {
+    return 0
+  }
+
+  if {$alsoPrintErrorInfo} {
+    if {$excuse != ""} {
+      PopError "$excuse\n$outp"
+    } else {
+      PopError "$outp"
+    }
+  } else {
+    PopError "$excuse"
+  }
+
+  return 1
+}
+
+proc tk_dialog_fr {w title text bitmap default args} {
+  global tkPriv config glob
+
+  # 1. Create the top-level window and divide it into top
+  # and bottom parts.
+
+  catch {destroy $w}
+  toplevel $w -class Dialog
+  wm title $w $title
+  wm iconname $w Dialog
+  wm protocol $w WM_DELETE_WINDOW { }
+  wm transient $w [winfo toplevel [winfo parent $w]]
+  frame $w.top  
+  pack $w.top -side top -fill both
+  frame $w.bot  
+  pack $w.bot -side bottom -fill both
+
+  # 2. Fill the top part with bitmap and message (use the option
+  # database for -wraplength so that it can be overridden by
+  # the caller).
+
+  #option add *Dialog.msg.wrapLength 3i widgetDefault
+  set text_length [string length $text]
+  set text [string range $text 0 1000]
+  if {$text_length > [string length $text]} {
+    set text "$text\n\n...etc..."
+  }
+  label $w.msg -justify left -text $text -font $config(gui,font) -wraplength 700
+  #-Adobe-Times-Medium-R-Normal--*-180-*-*-*-*-*-*
+  pack $w.msg -in $w.top -side right -expand 1 -fill both -padx 3m -pady 3m
+  if {$bitmap != ""} {
+    label $w.bitmap -bitmap $bitmap
+    pack $w.bitmap -in $w.top -side left -padx 3m -pady 3m
+  }
+
+  # 3. Create a row of buttons at the bottom of the dialog.
+
+  set i 0
+  foreach but $args {
+    button $w.button$i -text $but -command "set tkPriv(button) $i"
+#    if {$i == $default} { }
+    if { 0 } {
+      frame $w.default  
+      raise $w.button$i $w.default
+      pack $w.default -in $w.bot -side left -expand 1 -padx 3m -pady 2m
+      pack $w.button$i -in $w.default -padx 2m -pady 2m
+      bind $w <Return> "$w.button$i flash; set tkPriv(button) $i"
+    } else {
+      pack $w.button$i -in $w.bot -side left -expand 1 \
+          -padx 3m -pady 2m
+    }
+    incr i
+  }
+
+  # 4. Withdraw the window, then update all the geometry information
+  # so we know how big it wants to be, then center the window in the
+  # display and de-iconify it.
+
+  wm withdraw $w
+  update idletasks
+  set pw [winfo parent $w]
+  set x [expr [winfo width $pw]/2 - [winfo reqwidth $w]/2 \
+      + [winfo x $pw]]
+  set y [expr [winfo height $pw]/2 - [winfo reqheight $w]/2 \
+      + [winfo y $pw]]
+  wm geom $w +$x+$y
+  wm deiconify $w
+
+  # 5. Set a grab and claim the focus too.
+
+  set oldFocus [focus]
+  set oldGrab [grab current $w]
+  if {$oldGrab != ""} {
+    set grabStatus [grab status $oldGrab]
+  }
+  frgrab $w
+  if {$default >= 0} {
+    focus $w.button$default
+  } else {
+    focus $w
+  }
+
+  # 6. Wait for the user to respond, then restore the focus and
+  # return the index of the selected button.  Restore the focus
+  # before deleting the window, since otherwise the window manager
+  # may take the focus away so we can't redirect it.  Finally,
+  # restore any grab that was in effect.
+
+  set oldena $glob(enableautoupdate)
+  set glob(enableautoupdate) 0
+  tkwait variable tkPriv(button)
+  set glob(enableautoupdate) $oldena
+  catch {focus $oldFocus}
+  destroy $w
+  if {$oldGrab != ""} {
+    frgrab $oldGrab
+  }
+  return $tkPriv(button)
+}
+
+proc StartTerm { dir inst } {
+  global glob config
+  if { $glob(os) eq "MacOSX" } {
+    Try { eval exec $config(cmd,term) cd $dir & } "" 1
+  } else {
+    Try { cd $dir; eval exec $config(cmd,term) & } "" 1
+  }
+}
+
+proc StartConsole { dir inst } {
+# tk console
+  global config
+  Try { 
+    cd "$dir"
+    console hide
+    console eval [ list cd $dir ]
+    console show
+  } "" 1
+}
+
+# Make sure link is open, don't open it if it is already open
+proc OpenFTP { ftpI } {
+  global glob config env
+  set ftpIleft ""
+  set ftpIright ""
+  set rl [regexp {ftp://([^/]*)(.*)} $glob(left,pwd) match ftpIleft directory]
+  set rr [regexp {ftp://([^/]*)(.*)} $glob(right,pwd) match ftpIright directory]
+  if {$ftpIleft == $ftpI || $ftpIright == $ftpI} {
+    # Link already open
+    return ""
+  }
+  Log "Opening FTP connection to $ftpI"
+
+  # first see if we can find a match in the config(ftp,site_usage) rule list
+  foreach k $config(ftp,login) {
+    if {[string match [lindex $k 0] $ftpI]} {
+      set user [lindex [lindex $k 1] 0]
+      set passwd [lindex [lindex $k 1] 1]
+      set proxy [lindex $k 2]
+      if {$passwd == "XXX"} {
+        set t [FTPEntryDialog "FTP Login" "Connecting to $ftpI: Please enter password" $user]
+        if {$t == ""} {
+          error "ABORT_FTP_LOGIN_PLEASE"
+        }
+        set passwd [lindex $t 1]
+      }
+      if { $user == "" } {
+        set user $config(ftp,user)
+      }
+      if { $passwd == "" } {
+        set passwd $config(ftp,password)
+      }
+      if { $proxy != "" } {
+        FTP_OpenSession $ftpI $proxy $user@$ftpI $passwd $ftpI
+        set glob(ftp,$ftpI,host) $proxy
+        set glob(ftp,$ftpI,passwd) $passwd
+        set glob(ftp,$ftpI,user) $user@$ftpI
+      } else {
+        FTP_OpenSession $ftpI $ftpI $user $passwd $ftpI
+        set glob(ftp,$ftpI,host) $ftpI
+        set glob(ftp,$ftpI,passwd) $passwd
+        set glob(ftp,$ftpI,user) $user
+      }
+      Log "FTP connection to $ftpI open"
+      return
+    }
+  }
+  set user $config(ftp,user)
+  set passwd $config(ftp,password)
+  if { !$config(ftp,anonymous) } {
+    set t [FTPEntryDialog "FTP Login" "Connecting to $ftpI: Please enter username and password" $env(USER)]
+    if {$t == ""} {
+      error "ABORT_FTP_LOGIN_PLEASE"
+    }
+    set user [lindex $t 0]
+    set passwd [lindex $t 1]
+    if { $user == "" } {
+      set user $config(ftp,user)
+    }
+    if { $passwd == "" } {
+      set passwd $config(ftp,password)
+    }
+  }
+  if { $config(ftp,proxy) != "" && $config(ftp,useproxy)} {
+    FTP_OpenSession $ftpI $config(ftp,proxy) $user@$ftpI $passwd $ftpI
+    set glob(ftp,$ftpI,host) $config(ftp,proxy)
+    set glob(ftp,$ftpI,passwd) $passwd
+    set glob(ftp,$ftpI,user) $user@$ftpI
+  } else {
+    FTP_OpenSession $ftpI $ftpI $user $passwd $ftpI
+    set glob(ftp,$ftpI,host) $ftpI
+    set glob(ftp,$ftpI,passwd) $passwd
+    set glob(ftp,$ftpI,user) $user
+  }
+  Log "FTP connection to $ftpI open"
+}
+
+
+
+proc ShowRev { } {
+  global glob env
+  set r [catch {source $glob(conf_dir)/version} out]
+  if {$r} {
+    set version 0.0
+  }
+  if {$glob(version) != $version} {
+    About
+    if {$version != "0.0"} {
+      ViewText $glob(lib_fr)/HISTORY
+    }
+    set r [catch {
+      set fid [open $glob(conf_dir)/version w]
+      puts $fid "set version $glob(version)"
+      close $fid
+    }]
+    if {$r} {
+      PopWarn "Cannot create $glob(conf_dir)/version"
+    }
+  }
+}
+
+# Make sure link is closed, don't close if in use
+proc CloseFTP { ftpI } {
+  global glob config
+  set ftpIleft ""
+  set ftpIright ""
+  set rl [regexp {ftp://([^/]*)(.*)} $glob(left,pwd) match ftpIleft directory]
+  set rr [regexp {ftp://([^/]*)(.*)} $glob(right,pwd) match ftpIright directory]
+  if {$ftpIleft == $ftpI || $ftpIright == $ftpI} {
+    # Link in use
+    return ""
+  }
+  #Log "Closing FTP connection to $ftpI"
+  Try { FTP_CloseSession $ftpI } "Could not close FTP session nicely, (non-fatal)\n" 1
+  catch {unset glob(ftp,$ftpI,host)}
+  catch {unset glob(ftp,$ftpI,user)}
+  catch {unset glob(ftp,$ftpI,passwd)}
+}
+
+
+proc FindLibfr {} {
+  global glob config env argv argv0
+  set pname $argv0
+  set r [catch { file readlink $pname } out]
+  if { $r != 0 } {
+    if { [string index [file dirname $pname] 0] == "/" } {
+      set glob(lib_fr) [file dirname $pname]
+    } else {
+      set glob(lib_fr) [pwd]/[file dirname $pname]
+    }
+  } else {
+    if { [string index [file dirname $out] 0] == "/" } {
+      set glob(lib_fr) [file dirname $out]
+    } else {
+      if { [string index [file dirname $pname] 0] == "/" } {
+        set glob(lib_fr) [file dirname $pname]/[file dirname $out]
+      } else {
+        set glob(lib_fr) [pwd]/[file dirname $pname]/[file dirname $out]
+      }
+    }
+  }
+  if { ! [info exists glob(doclib_fr)] } {
+    set glob(doclib_fr) $glob(lib_fr)
+  }
+}
+
+proc Log { text } {
+  LogStatusOnly $text
+  LogSilent $text
+}
+
+proc LogStatusOnly { text } {
+  global glob
+  .status configure -text [string range $text 0 110]
+  update idletasks
+}
+
+proc LogSilent { text } {
+  global glob config
+  set glob(log) "$glob(log)---[Time]---\n$text\n"
+  set len [string length $glob(log)]
+  if { $len > $config(logsize) } {
+    set glob(log) "...[string range $glob(log) [expr $len - (($config(logsize) * 4) / 5)] end]"
+  }
+}
+
+
+proc IsFTP { dir } {
+  if { [string range $dir 0 5] == "ftp://" } {return 1}
+  return 0
+}
+
+# Pwd should filter /tmp_mnt stuff out of the path. How well does that work? Not
+proc Pwd { } {
+  return [pwd]
+}
+
+proc CleanUp { ret } {
+  global env config glob
+  if {$glob(havedoneftp)} {
+    set r [catch {glob $glob(tmpdir)/*} list]
+    if {!$r && $list != "" } {
+      catch { eval file delete -force -- $list } out
+    }
+  }
+  if { $ret } { puts "FileRunner: aborting (return code $ret)" }
+  # save history to disk
+  set r [catch {set fid [open $glob(conf_dir)/history w];puts $fid $glob(history);close $fid} out]
+  if {$r} {
+    puts "FileRunner: Can't save directory history to disk: $out"
+  }
+  if { $config(save_conf_at_exit) && !$r && !$ret } {
+    SaveConfig
+  }
+  exit $ret
+}
+
+proc Time {} {
+  global config
+  if { $config(dateformat) == "yymmdd" } {
+    return "[clock format [clock seconds] -format %y%m%d\ %R]"
+  } else {
+    return "[clock format [clock seconds] -format %d%m%y\ %R]"
+  }
+}
+
+proc TimeUpdater {} {
+  global glob
+  .status.clock configure -text "[Time]      "
+  after 30000 TimeUpdater
+}
+
+proc ListUpdater {} {
+  global glob config
+  set f [focus]
+  set class ""
+  if {$f != ""} {
+    set class [winfo class $f]
+  }
+  if {$glob(enableautoupdate) && $class != "Entry"} {
+    foreach inst {left right} {
+      if { ! [IsFTP $glob(${inst},pwd)] } {
+        set r [catch { set mtime [file mtime $glob($inst,pwd)] }]
+        if {!$r} {
+          if {$mtime != $glob($inst,lastmtime)} {
+            LogStatusOnly "Updating $inst panel"
+            DoProtCmd "UpdateWindow $inst"
+            LogStatusOnly "Updating $inst panel - done"
+            #set glob($inst,lastmtime) $mtime #done in updatewindow
+          }
+        }
+      }
+    }
+  }
+  if {$config(autoupdate)} {
+    after [expr $config(autoupdate) * 1000] ListUpdater
+  }
+}
+
+proc StartUpdaters {} {
+  global glob config
+  after 30000 TimeUpdater
+  set glob(left,lastmtime) 0
+  set glob(right,lastmtime) 0
+  catch {set glob(left,lastmtime) [file mtime $glob(left,pwd)]}
+  catch {set glob(right,lastmtime) [file mtime $glob(right,pwd)]}
+  if {$config(autoupdate)} {
+    after [expr $config(autoupdate) * 1000] ListUpdater
+  }
+}
+
+proc frgrab { w } {
+  for {set i 0} {$i < 10} {set i [expr $i + 1]} {
+    set r [catch {grab $w} out]
+    if {!$r} { return }
+    after 50
+  }
+  if {$r} {
+    LogStatusOnly "$out"
+  }
+}
+
+proc ViewBatchList {} {
+  global glob
+  set tmp [join $glob(batchlist) \n]
+  ViewString {FTP Batch List} tmp {}
+}
+
+
+proc AddToBatchList { inst } {
+  global glob
+  foreach sel [$glob(win,$inst).frame_listb.listbox1 curselection] {
+    set elem [lindex $glob($inst,filelist) $sel]
+    switch [lindex $elem 2] {
+      fl -
+      fn {
+        set item [list $glob($inst,pwd)/[lindex $elem 1] [lindex $elem 3]]
+        set glob(batchlist) [linsert $glob(batchlist) end $item]
+      }
+      default {
+        PopError "You can only add FTP files to the batch"
+        return
+      }
+    }
+  }
+}
+
+# The purpose of this function is to take a string and escape it so it survives being passed through
+# the evil eval command without changing at all. (Did I mention I hate the eval command? :-) 
+# ...I just realized I hate the list command too... :-)
+proc Esc { name } {
+  set a [list $name]
+  set len [string length $a]
+  # eval doesn't handle a string ending with '\ ' very well...
+  if {[string range $a [expr $len - 2] end] == {\ }} {
+    set a "\"$a\""
+  }
+  return $a
+}
+
+proc CheckOwner { file } { 
+  if {! [file exists $file]} {
+    return 1
+  }
+  return [file owned $file]
+}
+
+# Philipp, 20060612: Keep track of active pane
+proc SetActive { aPane } {
+  global glob
+#  puts stdout "$aPane"
+  if { [ string eq $aPane "left" ] } {
+    $glob(win,left)           configure -background $glob(gui,color_select_bg)
+    $glob(win,left).panestat  configure -background $glob(gui,color_select_bg)
+    $glob(win,right)          configure -background $glob(gui,color_cmd)
+    $glob(win,right).panestat configure -background $glob(gui,color_cmd)
+  } elseif { [ string eq $aPane "right" ] } {
+    $glob(win,left)           configure -background $glob(gui,color_cmd)
+    $glob(win,left).panestat  configure -background $glob(gui,color_cmd)
+    $glob(win,right)          configure -background $glob(gui,color_select_bg)
+    $glob(win,right).panestat configure -background $glob(gui,color_select_bg)
+  }
+  set glob(active) $aPane
+  return
+}
+
+# --------------------------------------STARTUP--------------------------------------------
+
+
+# check platform
+if { [ string first "Win" $tcl_platform(os) ] == 0 } {
+  set glob(os) "Windows"
+} elseif { [ string first "Dar" $tcl_platform(os) ] == 0 && [ tk windowingsystem ] eq "aqua" } {
+  set glob(os) "MacOSX"
+} else {
+# treat all Unices equally
+  set glob(os) "Unix"
+}
+set glob(init_done) 0
+set glob(start_path) [pwd]
+
+FindLibfr
+
+# Load patches for 8.0...
+if {$tk_patchLevel == "8.0"} {
+  #puts "Buggy 8.0 menu.tcl file, applying patch"
+  source $glob(lib_fr)/menu_80_patch.tcl
+}
+
+set auto_path [linsert $auto_path 0 $glob(lib_fr) ]
+
+if { $glob(os) eq "Windows" } {
+  set f ext.dll
+} elseif { $glob(os) eq "MacOSX" } {
+  set f ext.dylib
+} else {
+  set f ext.so
+}
+
+set r [catch { load $glob(lib_fr)/$f Ext } out]
+
+if { $r != 0 } {
+  PopErrorSimple "Error loading FileRunner binary extensions code:\n\n$out"
+  exit 1
+}
+
+if { $glob(os) == "WIN32" } {
+  set glob(conf_dir) $glob(lib_fr)/userconfig
+} else {
+  set glob(conf_dir) $env(HOME)/.fr
+}
+
+set config(usercommands) ""
+if { [file exists $glob(conf_dir)/cmds ] } {
+  set r [catch { source $glob(conf_dir)/cmds } out]
+  if { $r != 0 } {
+    PopErrorSimple "Error loading code from $glob(conf_dir)/cmds:\n\n$out"
+    exit 1
+  }
+}
+
+set r [catch {package require http 2.0} out]
+if {$r} {
+  PopErrorSimple "Error loading HTTP package:\n\n$out"
+  exit 1
+}
+
+unset out r f
+
+# load style definitions
+FTP_InvalidateCache
+CheckConfigDir
+InitConfig
+ReadConfig
+ShowWindow
+InitWindows
+InitBindings
+ConfigPwd
+StartUpdaters
+Log "Welcome to FileRunner v$glob(version). Copyright (C) 1996-1999 Henrik Harmsen."
+ShowRev
+set glob(init_done) 1
+# load the console script
+source $glob(lib_fr)/console.tcl
+console hide
