@@ -1,6 +1,6 @@
 #!/usr/bin/env wish
 
-# $Id: fr,v 1.1 2006/07/09 10:10:07 butz Exp $
+# $Id: fr,v 1.2 2006/07/10 19:27:05 butz Exp $
 
 set glob(version) 2.5.1
 
@@ -2761,7 +2761,7 @@ proc PopErrorSimple { error } {
 }
 
 proc Try { tryscript excuse alsoPrintErrorInfo {async 0} } {
-  puts "Try:$tryscript"
+#  puts "Try:$tryscript"
   if {$async} {
     # Currently the try function can only background commands that use the built-in exec
     if {[string match "*exec*" $tryscript]} {
